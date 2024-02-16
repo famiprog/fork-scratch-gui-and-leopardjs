@@ -10,6 +10,15 @@ import Stage from '../../containers/stage.jsx';
 import Loader from '../loader/loader.jsx';
 
 import styles from './stage-wrapper.css';
+import { Tab, TabList, TabPanel, Tabs } from 'react-tabs';
+import tabStyles from 'react-tabs/style/react-tabs.css';
+import guiStyles from '../gui/gui.css';
+import { FormattedMessage, injectIntl } from 'react-intl';
+import { activateStageTab } from '../../reducers/stage-wrapper-tab.js';
+import { connect } from 'react-redux';
+import scratchCatIcon from './icon--scratch-cat.svg';
+import javascriptIcon from './icon--javascript.svg';
+import StageJSComponent from '../stage-js/stage-js.jsx'
 
 const StageWrapperComponent = function (props) {
     const {
@@ -18,8 +27,19 @@ const StageWrapperComponent = function (props) {
         isRendererSupported,
         loading,
         stageSize,
-        vm
+        vm,
+        activeTabIndex,
+        onActivateStageTab
     } = props;
+
+    const tabClassNames = {
+        tabs: guiStyles.tabs,
+        tab: classNames(tabStyles.reactTabsTab, guiStyles.tab),
+        tabList: classNames(tabStyles.reactTabsTabList, guiStyles.tabList),
+        tabPanel: classNames(tabStyles.reactTabsTabPanel, guiStyles.tabPanel),
+        tabPanelSelected: classNames(tabStyles.reactTabsTabPanelSelected, guiStyles.isSelected),
+        tabSelected: classNames(tabStyles.reactTabsTabSelected, guiStyles.isSelected)
+    };
 
     return (
         <Box
@@ -35,16 +55,60 @@ const StageWrapperComponent = function (props) {
                     vm={vm}
                 />
             </Box>
-            <Box className={styles.stageCanvasWrapper}>
-                {
-                    isRendererSupported ?
-                        <Stage
-                            stageSize={stageSize}
-                            vm={vm}
-                        /> :
-                        null
-                }
-            </Box>
+            {/* TODO for now the activeTabIndex is not used.
+            Check if I need this, and if not, why the tabs from the left side (code, costumes, sounds) needs it*/}
+            {/* selectedIndex={activeTabIndex} */}
+            {/* onSelect={onActivateStageTab} */}
+            <Tabs
+                forceRenderTabPanel
+                className={tabClassNames.tabs}
+                defaultIndex={0}
+                selectedTabClassName={tabClassNames.tabSelected}
+                selectedTabPanelClassName={tabClassNames.tabPanelSelected}
+                onSelect={onActivateStageTab}
+            >
+                <TabList className={tabClassNames.tabList}>
+                    <Tab className={tabClassNames.tab}>
+                        <img
+                            draggable={false}
+                            src={scratchCatIcon}
+                        />
+                        <FormattedMessage
+                            defaultMessage="Scratch renderer"
+                            description="Button to get to the code panel"
+                            id="gui.stageWrapper.scratchTab"
+                        />
+                    </Tab>
+                    <Tab className={tabClassNames.tab}>
+                        <img
+                            draggable={false}
+                            src={javascriptIcon}
+                        />
+                        <FormattedMessage
+                            defaultMessage="JS renderer"
+                            description="Button to get to the code panel"
+                            id="gui.stageWrapper.jsTab"
+                        />
+                    </Tab>
+                </TabList>
+                <TabPanel className={tabClassNames.tabPanel}>
+                    <Box className={styles.stageCanvasWrapper}>
+                        {
+                            isRendererSupported ?
+                                <Stage
+                                    stageSize={stageSize}
+                                    vm={vm}
+                                /> :
+                                null
+                        }
+                    </Box>
+                </TabPanel>
+                <TabPanel className={tabClassNames.tabPanel}>
+                    <Box className={styles.stageCanvasWrapper}>
+                        <StageJSComponent></StageJSComponent>
+                    </Box>
+                </TabPanel>
+            </Tabs>
             {loading ? (
                 <Loader isFullScreen={isFullScreen} />
             ) : null}
@@ -61,4 +125,15 @@ StageWrapperComponent.propTypes = {
     vm: PropTypes.instanceOf(VM).isRequired
 };
 
-export default StageWrapperComponent;
+const mapStateToProps = state => ({
+    activeTabIndex: state.scratchGui.editorTab.activeTabIndex,
+});
+
+const mapDispatchToProps = dispatch => ({
+    onActivateStageTab: tab => dispatch(activateStageTab(tab)),
+});
+
+export default injectIntl(connect(
+    mapStateToProps,
+    mapDispatchToProps
+)(StageWrapperComponent));
