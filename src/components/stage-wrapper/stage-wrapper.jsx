@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import React from 'react';
+import React, { useState } from 'react';
 import classNames from 'classnames';
 import VM from 'scratch-vm';
 
@@ -41,6 +41,8 @@ const StageWrapperComponent = function (props) {
         tabSelected: classNames(tabStyles.reactTabsTabSelected, guiStyles.isSelected)
     };
 
+    const [activeTab, setActiveTab] = useState(1);
+
     return (
         <Box
             className={classNames(
@@ -62,10 +64,13 @@ const StageWrapperComponent = function (props) {
             <Tabs
                 forceRenderTabPanel
                 className={tabClassNames.tabs}
-                defaultIndex={0}
+                defaultIndex={1}
                 selectedTabClassName={tabClassNames.tabSelected}
                 selectedTabPanelClassName={tabClassNames.tabPanelSelected}
-                onSelect={onActivateStageTab}
+                onSelect={tab => {
+                    onActivateStageTab(tab); 
+                    setActiveTab(tab);
+                }}
             >
                 <TabList className={tabClassNames.tabList}>
                     <Tab className={tabClassNames.tab}>
@@ -85,8 +90,8 @@ const StageWrapperComponent = function (props) {
                             src={javascriptIcon}
                         />
                         <FormattedMessage
-                            defaultMessage="JS renderer"
-                            description="Button to get to the code panel"
+                            defaultMessage="Leopard renderer"
+                            description="Button to get to the leopard renderer panel"
                             id="gui.stageWrapper.jsTab"
                         />
                     </Tab>
@@ -98,6 +103,7 @@ const StageWrapperComponent = function (props) {
                                 <Stage
                                     stageSize={stageSize}
                                     vm={vm}
+                                    isRendered={activeTab == 0}
                                 /> :
                                 null
                         }
@@ -105,7 +111,7 @@ const StageWrapperComponent = function (props) {
                 </TabPanel>
                 <TabPanel className={tabClassNames.tabPanel}>
                     <Box className={styles.stageCanvasWrapper}>
-                        <StageJSComponent></StageJSComponent>
+                        <StageJSComponent stageSize={stageSize}/>
                     </Box>
                 </TabPanel>
             </Tabs>
