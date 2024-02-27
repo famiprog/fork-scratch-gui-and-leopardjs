@@ -7,6 +7,8 @@ const fs = require('fs-extra');
 const app = express();
 const port = 3000;
 
+// TODO CSR: rename/move in storage-server/main.js. De asemenea, scriptul npm tr sa aiba numele storage-server
+
 function ensureDirectoryExistence(filePath) {
   var dirname = path.dirname(filePath);
   if (fs.existsSync(dirname)) {
@@ -88,6 +90,7 @@ app.post('/api/save', [upload.fields([{ name: "scratch", maxCount: 1 }, { name: 
   }
 
   // Save the new received files
+  // TODO CSR: a pune "out" ca o constanta ar trebui sa fie un reflex. Sa salvam in storage-server/data
   saveAsset(req.files.scratch[0].buffer, path.join("out", "scratch"), req.files.scratch[0].originalname);
   saveAsset(req.files.iframe[0].buffer, path.join("out", "iframe"), req.files.iframe[0].originalname);
   for (var i = 0; i < req.files.leopard.length; i++) {
