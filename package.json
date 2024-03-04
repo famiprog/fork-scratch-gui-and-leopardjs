@@ -25,7 +25,8 @@
     "test:unit": "jest test[\\\\/]unit",
     "test:smoke": "jest --runInBand test[\\\\/]smoke",
     "watch": "webpack --colors --watch",
-    "start-persistence-server": "node load-save-files-server.js"
+    "start-storage-server": "node load-save-files-server.js",
+    "start-all": "concurrently \"npm run start\" \"npm run start-storage-server\""
   },
   "config": {
     "commitizen": {
@@ -71,9 +72,9 @@
     "prop-types": "^15.5.10",
     "query-string": "^5.1.1",
     "raw-loader": "^0.5.1",
-    "react": "16.14.0",
+    "react": "^16.0.0",
     "react-contextmenu": "2.9.4",
-    "react-dom": "16.14.0",
+    "react-dom": "^16.0.0",
     "react-draggable": "3.0.5",
     "react-ga": "2.5.3",
     "react-intl": "2.9.0",
@@ -120,9 +121,9 @@
     "@commitlint/cli": "17.8.1",
     "@commitlint/config-conventional": "17.8.1",
     "babel-core": "7.0.0-bridge.0",
-    "@babel/eslint-parser": "7.23.3",
     "babel-loader": "8.3.0",
     "chromedriver": "117.0.3",
+    "concurrently": "^8.2.2",
     "enzyme": "3.10.0",
     "enzyme-adapter-react-16": "1.15.7",
     "eslint": "8.56.0",
