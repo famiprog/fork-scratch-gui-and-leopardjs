@@ -35,32 +35,6 @@ class StageJSComponent extends React.Component {
         return btoa(binary);
     }
 
-    getModifiedContentForCostume(indexJsContent, costume, costumeUrl, costumeIndex) {
-        // We are replacing the actual url with a data url
-        // But there is a problem with this replacement, because inside Leopard library there is a test 
-        // for bitmap images like:
-        // this.isBitmap = !this.url.match(/\.svg/);
-        // this.resolution = this.isBitmap ? 2 : 1;
-        // and the /\.svg/ regexp used above doesn't match a data url, only a normal URL for a svg image
-        if (costume.ext == 'svg') {
-            var regExpForResolution = new RegExp("(this\\.costumes = \\[.*?" + costumeUrl.replaceAll("/", "\\/") + ".*?\\];(?:this\\.costumes\\[\\d+\\]\.isBitmap=false;this\\.costumes[\\d+]\\.resolution=1;)*)", "s");
-            indexJsContent = indexJsContent.replace(regExpForResolution, "$1this\.costumes[" + costumeIndex + "]\.isBitmap=false;this\.costumes[" + costumeIndex + "]\.resolution=1;")
-        }
-
-        return this.getModifiedContentForResource(indexJsContent, costume.asset, costumeUrl, 'image', costume.ext == 'svg' ? 'svg+xml' : costume.ext);
-    }
-
-    getModifiedContentForSound(indexJsContent, sound, soundUrl) {
-        return this.getModifiedContentForResource(indexJsContent, sound.asset, soundUrl, "audio", sound.ext);
-    }
-
-    /** Replaces the actual URL with the corresponding data URL */
-    getModifiedContentForResource(indexJsContent, resourceContent, resourceUrl, dataType, ext) {
-        var base64Data = this.arrayBufferToBase64(resourceContent);
-        var dataUri = `data:${dataType}/${ext};base64,${base64Data}`;
-        return indexJsContent.replace(resourceUrl, dataUri);
-    }
-
     generateJsProject() {
         this.props.saveProjectSb3().then(async content => {
             const project = await Project.fromSb3(content);
@@ -76,106 +50,61 @@ class StageJSComponent extends React.Component {
                 },
             );
 
-            var filesMap = {};
-
-            var indexJsContent = "";
-            var otherJsFiles = {};
-            var htmlContent;
-
-            for (var fileName in files) {
-                if (fileName === "index.js") {
-                    indexJsContent = files[fileName];
-                } else if (fileName.endsWith(".js")) {
-                    otherJsFiles[fileName] = files[fileName];
-                } else {
-                    // There is only one html file: index.html
-                    htmlContent = files[fileName];
-                }
-                filesMap[fileName] = files[fileName];
-            }
-
-            // Replace each import of a js file with the actual content of that file
-            for (var fileName in otherJsFiles) {
-                var componentName = fileName.substring(fileName.lastIndexOf("/") + 1, fileName.lastIndexOf(".js"));
-                var content = otherJsFiles[fileName];
-                if (content.indexOf("extends Sprite") >= 0) {
-                    // The `Sprite` is already imported in the main index.js file. 
-                    // So we need to avoid importing it again (else an error is thrown).
-                    content = content.replace(/import {\s*Sprite(?:.|\s)+?;/, '');
-                }
-                indexJsContent = indexJsContent.replace('import ' + componentName + ' from "./' + fileName + '";', "\n" + content + "\n");
-            }
-
-            // We need to erase all the exports to avoid errors
-            indexJsContent = indexJsContent.replaceAll("export default", "");
-
-            // Replace the actual urls of sound and costumes with the corresponding data url
+            // The files contains only the js files. Add also the assets files
             for (const costume of project.stage.costumes) {
                 const fileUrl = "./Stage/costumes/" + costume.name + "." + costume.ext;
-                indexJsContent = this.getModifiedContentForCostume(
-                    indexJsContent,
-                    costume,
-                    fileUrl,
-                    project.stage.costumes.indexOf(costume)
-                );
-                filesMap[fileUrl] = costume.asset;
+                files[fileUrl] = costume.asset;
             }
 
             for (const sprite of project.sprites) {
                 for (const costume of sprite.costumes) {
                     const fileUrl = "./" + sprite.name + "/costumes/" + costume.name + "." + costume.ext;
-                    indexJsContent = this.getModifiedContentForCostume(
-                        indexJsContent,
-                        costume,
-                        fileUrl,
-                        sprite.costumes.indexOf(costume)
-                    );
-                    filesMap[fileUrl] = costume.asset;
+                    files[fileUrl] = costume.asset;
                 }
             }
 
             for (const sound of project.stage.sounds) {
                 const fileUrl = "./Stage/sounds/" + sound.name + "." + sound.ext;
-                indexJsContent = this.getModifiedContentForSound(indexJsContent, sound, fileUrl);
-                filesMap[fileUrl] = sound.asset;
+                files[fileUrl] = sound.asset;
             }
 
             for (const sprite of project.sprites) {
                 for (const sound of sprite.sounds) {
                     const fileUrl = "./" + sprite.name + "/sounds/" + sound.name + "." + sound.ext;
-                    indexJsContent = this.getModifiedContentForSound(indexJsContent, sound, fileUrl);
-                    filesMap[fileUrl] = sound.asset;
+                    files[fileUrl] = sound.asset;
                 }
             }
-
-            // Insert the js code into html code
-            htmlContent = htmlContent.replace('import project from "./index.js";', indexJsContent + "\n");
-            this.setState({
-                // if the settingWasUpdated message is displayed, this will be the ID of its removal timer
-                htmlContent: htmlContent,
-                leopardFilesMap: filesMap
-            });
+            this.loadFilesIntoIFrame(files);
         });
+    }
+
+    toByteArray(string) {
+        const byteArray = new Uint8Array(string.length);
+        for (let i = 0; i < string.length; i++) {
+            byteArray[i] = string.charCodeAt(i);
+        }
+        return byteArray;
     }
 
     loadFromServer() {
         fetch("http://localhost:3000/api/load")
             .then(response => response.json())
             .then((response) => {
+                let filesForIFrame = {};
                 for (const [fileName, fileInfo] of Object.entries(response.filesMap)) {
+                    let content = atob(fileInfo.content);
+                    if (fileName.includes("costumes") || fileName.includes("sounds") || fileName.includes("project.sb3")) {
+                        content = this.toByteArray(content);
+                    }
+
                     if (fileName.includes("project.sb3")) {
-                        const content = atob(fileInfo.content);
-                        const byteArray = new Uint8Array(content.length);
-                        for (let i = 0; i < content.length; i++) {
-                            byteArray[i] = content.charCodeAt(i);
-                        }
-                        return this.props.vm.loadProject(byteArray);
-                    } else if (fileName.includes("iframe.html")) {
-                        this.setState({
-                            htmlContent: atob(fileInfo.content)
-                        });
+                        this.props.vm.loadProject(content);
+                    } else { 
+                        filesForIFrame[fileName.replace("storage-server/data/leopard", ".")] = content;
                     }
                 }
+                
+                this.loadFilesIntoIFrame(filesForIFrame);
             });
     }
 
@@ -183,12 +112,11 @@ class StageJSComponent extends React.Component {
         this.props.saveProjectSb3().then(async content => {
             const formData = new FormData();
             formData.append("scratch", content, "project.sb3");
-            formData.append("iframe", new Blob([this.state.htmlContent], { type: 'text/html' }), "iframe.html");
 
             let i = 0;
-            for (const [url, content] of Object.entries(this.state.leopardFilesMap)) {
+            for (const [url, content] of Object.entries(this.state.leopardFiles)) {
                 const lastSlashIndex = url.lastIndexOf('/');
-                const path = url.substring(0, lastSlashIndex); // "folder1/folder2"
+                const path = url.substring(0, lastSlashIndex); 
                 const fileName = url.substring(lastSlashIndex + 1);
 
                 formData.append("leopard", new Blob([content], { type: 'text/plain' }), fileName);
@@ -205,11 +133,60 @@ class StageJSComponent extends React.Component {
         });
     }
 
-    componentDidUpdate(prevProps) {
-        if (this.props.projectChanged && !prevProps.projectChanged
+    loadFilesIntoIFrame(files) {
+        this.setState({
+            leopardFiles: files
+        });
+
+        if (!files || Object.keys(files).length == 0) {
+            return;
+        }
+
+        // Send the generated content to the service worker that will serve those files to the iframe
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.ready.then((registration) => {
+                registration.active.postMessage(files);
+            });
+
+            navigator.serviceWorker.addEventListener("message", (event) => {
+                this.setState({
+                    parrentAppClientId: event.data,
+                    // This is needed to force the iframe to reload the content 
+                    // Because at a regeneration, the URL remains the same but the files served by the service worker changed
+                    iframeKey: this.state.iframeKey == undefined ? 0 : this.state.iframeKey + 1
+                });
+            });
+        } else {
+            console.log("Service worker absent")
+        }
+    }
+
+    componentDidMount() {
+        this.loadFromServer(); 
+    }
+
+    componentWillReceiveProps(prevProps) {
+         if (this.props.projectChanged && !prevProps.projectChanged
             || this.props.loadingState == LoadingState.SHOWING_WITHOUT_ID && prevProps.loadingState != LoadingState.SHOWING_WITHOUT_ID
             || this.props.loadingState == LoadingState.SHOWING_WITH_ID && prevProps.loadingState != LoadingState.SHOWING_WITH_ID) {
-            this.generateJsProject();
+                this.generateJsProject();
+        }
+    }
+
+    getIFrameSrc(files, parrentAppClientId) {
+        if (!files || Object.keys(files).length == 0) {
+            return "data:text/html;charset=utf-8," + encodeURIComponent(`
+                <html>
+                    <body>
+                       <p> 
+                            No leopard files generated/found on server. </br> Try to press the <b>"Generate JS"</b> followed by <b>"Save to server"</b> button. </br>
+                            If this doesn't work, an error occured. Look in the console for any error messages.
+                        </p>
+                    </body>
+                </html>
+            `);
+        } else {
+            return "http://localhost:8601/leopard.html?parentAppClientId=" + parrentAppClientId;
         }
     }
 
@@ -241,7 +218,7 @@ class StageJSComponent extends React.Component {
                 </Button>
             </Box>
 
-            <iframe className={styles.iframe} src={"data:text/html;charset=utf-8," + encodeURIComponent(this.state.htmlContent)}></iframe>
+            <iframe key={this.state.iframeKey} className={styles.iframe} src={this.getIFrameSrc(this.state.leopardFiles, this.state.parrentAppClientId)}></iframe>
         </Box>;
     }
 }

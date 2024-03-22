@@ -61,6 +61,26 @@ export default appTarget => {
         window.onbeforeunload = () => true;
     }
 
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register('static/main-sw.js', { scope: '/' })
+            .catch(function(err){
+                console.log("Service worker registration failed: " + err);
+            })
+    } else {
+        console.log("Service worker absent");
+    } 
+
+    if (typeof window === 'object') {
+        window.addEventListener('unload', function(event) {
+            // Communicate with the service worker to trigger cache cleanup
+            if ("serviceWorker" in navigator) { 
+                navigator.serviceWorker.ready.then((registration) => {
+                    registration.active.postMessage('cleanupCache');
+                });
+            }
+        });
+    }  
+     
     ReactDOM.render(
         // important: this is checking whether `simulateScratchDesktop` is truthy, not just defined!
         simulateScratchDesktop ?
