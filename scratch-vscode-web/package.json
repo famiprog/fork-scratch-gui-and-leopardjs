@@ -9,16 +9,19 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+		"onWebviewPanel:scratch-vscode-web"
+	],
   "browser": "./dist/web/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "scratch-vscode-web.helloWorld",
-        "title": "Hello World"
-      }
-    ]
-  },
+		"commands": [
+			{
+				"command": "scratch-vscode-web.start",
+				"title": "Start scratch editor",
+				"category": "Scratch"
+			}
+		]
+	},
   "scripts": {
     "test": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. --extensionTestsPath=dist/web/test/suite/index.js",
     "pretest": "npm run compile-web",
@@ -27,7 +30,7 @@
     "watch-web": "webpack --watch",
     "package-web": "webpack --mode production --devtool hidden-source-map",
     "lint": "eslint src --ext ts",
-    "run-in-browser": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. ."
+    "run-in-browser": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=."
   },
   "devDependencies": {
     "@types/assert": "^1.5.10",

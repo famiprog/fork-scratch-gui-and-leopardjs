@@ -5,7 +5,7 @@ const cors = require('cors');
 const fs = require('fs-extra');
 
 const app = express();
-const port = 3000;
+const port = 3001;
 const OUT_FOLDER = "storage-server/data";
 
 function ensureDirectoryExistence(filePath) {
