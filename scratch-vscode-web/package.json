@@ -9,15 +9,27 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "// activationEvents" : "Our extension, besides adding the scratch custom editor, modifies the 'autosave' setup to 'off'", 
+  "// activationEvents1" : "And we need this setup active for all editors not only for the scratch editor, just after the vscode starts",
+  "activationEvents": [
+    "onStartupFinished"
+	],
   "browser": "./dist/web/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "scratch-vscode-web.helloWorld",
-        "title": "Hello World"
-      }
-    ]
+  "contributes": 
+    {"customEditors": [
+			{
+				"viewType": "scratch-vs-code-web.scratch-editor",
+				"displayName": "Scratch + Leopard",
+				"selector": [
+					{
+						"filenamePattern": "*.sb3"
+					}
+				]
+			}
+		]
+	},
+  "capabilities": {
+    "virtualWorkspaces": true
   },
   "scripts": {
     "test": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. --extensionTestsPath=dist/web/test/suite/index.js",
@@ -27,7 +39,7 @@
     "watch-web": "webpack --watch",
     "package-web": "webpack --mode production --devtool hidden-source-map",
     "lint": "eslint src --ext ts",
-    "run-in-browser": "vscode-test-web --browserType=none --extensionDevelopmentPath=. ."
+    "run-in-browser": "vscode-test-web --browserType=none --extensionDevelopmentPath=."
   },
   "devDependencies": {
     "@types/assert": "^1.5.10",

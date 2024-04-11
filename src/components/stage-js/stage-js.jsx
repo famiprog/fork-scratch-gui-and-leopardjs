@@ -1,225 +1,232 @@
 import bindAll from 'lodash.bindall';
 import React from 'react';
-import { injectIntl } from 'react-intl';
-import { connect } from 'react-redux';
-import { Project } from 'sb-edit';
-import { LoadingState } from '../../reducers/project-state';
-import parserHtml from "prettier/parser-html";
-import parserBabel from "prettier/parser-babel";
+import {injectIntl} from 'react-intl';
+import {connect} from 'react-redux';
+import {Project} from 'sb-edit';
+import {LoadingState} from '../../reducers/project-state';
+import parserHtml from 'prettier/parser-html';
+import parserBabel from 'prettier/parser-babel';
 import Button from '../button/button.jsx';
 import styles from './stage-js.css';
-import { getStageDimensions } from '../../lib/screen-utils';
+import {getStageDimensions} from '../../lib/screen-utils';
 import Box from '../box/box.jsx';
 
+const TRUSTED_ORIGINS_PATTERNS = [
+    // In development, the address (of the webview of the vscode extension) looks like: 
+    // http://12q9ut155tm2e1m5qvsri5pjgd6o913mctten638icadgb6o58bq.localhost:3000.
+    // So it contains a dynamic generated part. That's why we need to use regexp
+    /^http:\/\/\w+\.localhost:3000$/
+    // Add more trusted origins for production 
+];
+
 class StageJSComponent extends React.Component {
-    constructor(props) {
+    
+    constructor (props) {
         super(props);
         bindAll(this, [
             'generateJsProject',
-            'loadFromServer',
-            'saveToServer'
+            'loadLeopardFilesFromVscode',
+            'loadScratchFileFromVscode',
+            'saveLeopardFilesToVscode'
         ]);
-        this.state = {
+        this.state = {};
+
+        if (window.parent == window) {
+            throw new Error("This app should be embeded inside a vscode editor");
         }
+        
+        //TODO DB: add an "update" event listener when the file is modified from another editor
+        window.addEventListener('message', event => {
+            var isTrusted = TRUSTED_ORIGINS_PATTERNS.some(function(origin) {
+                return origin.test(event.origin);
+            });
+            if (!isTrusted) {
+                return;
+            }
+            const { type, body, requestId } = event.data;
+            switch (type) {
+                case 'loadScratchFileResponce':
+                    // The loadProject() triggers PROJECT_CHANGED events (on every target, block, costume, sound, etc creation). 
+                    // We want to avoid this
+                    this.props.vm.off('PROJECT_CHANGED', this.projectChangedHandler);
+                    this.props.vm.loadProject(body).then(() => {
+                        this.props.vm.on('PROJECT_CHANGED', this.projectChangedHandler);
+                    });
+                    break;
+                case 'loadLeopardFilesResponce':
+                    const filesForIFrame = {};
+                    for (const [fileName, fileInfo] of Object.entries(body)) {
+                        let content = fileInfo;
+                        if (fileName.endsWith('.html') || fileName.includes('.js') || fileName.includes('.svg')) {
+                            content = new TextDecoder('utf-8').decode(content);
+                        }
+                        filesForIFrame[fileName] = content;
+                    }
+                    // Load the Leopard js project
+                    this.loadFilesIntoIFrame(filesForIFrame);
+                    break;
+                case 'getScratchFile':
+                    this.props.saveProjectSb3().then(async content => {
+                        // The content is a BLOB and we need to convert it to Uint8Array.
+                        // This is because the message is redirected by the webview to the vscode extension using `vscode.postMessage`(@ see extension.ts#_getHtmlForWebview)
+                        // But `vscode.postMessage` doesn't accept sending BLOBs (see https://code.visualstudio.com/api/references/vscode-api#Webview)
+                        const scratchContent = new Uint8Array(await new Response(content).arrayBuffer());
+                        
+                        window.parent.postMessage(
+                            {
+                                type: 'response', 
+                                requestId,
+                                body: scratchContent
+                            },
+                            // TODO DB: Maybe we should specify a more specific targetOrigin
+                            '*' 
+                        );
+                    });
+                    break;
+            }
+        });
     }
 
-    arrayBufferToBase64(buffer) {
-        var binary = "";
-        var bytes = new Uint8Array(buffer);
-        var len = bytes.byteLength;
-
-        for (var i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-
-        return btoa(binary);
+    componentDidMount() {
+        this.props.vm.on('PROJECT_CHANGED', this.projectChangedHandler);
+        this.loadScratchFileFromVscode();
+        this.loadLeopardFilesFromVscode();
     }
 
-    getModifiedContentForCostume(indexJsContent, costume, costumeUrl, costumeIndex) {
-        // We are replacing the actual url with a data url
-        // But there is a problem with this replacement, because inside Leopard library there is a test 
-        // for bitmap images like:
-        // this.isBitmap = !this.url.match(/\.svg/);
-        // this.resolution = this.isBitmap ? 2 : 1;
-        // and the /\.svg/ regexp used above doesn't match a data url, only a normal URL for a svg image
-        if (costume.ext == 'svg') {
-            var regExpForResolution = new RegExp("(this\\.costumes = \\[.*?" + costumeUrl.replaceAll("/", "\\/") + ".*?\\];(?:this\\.costumes\\[\\d+\\]\.isBitmap=false;this\\.costumes[\\d+]\\.resolution=1;)*)", "s");
-            indexJsContent = indexJsContent.replace(regExpForResolution, "$1this\.costumes[" + costumeIndex + "]\.isBitmap=false;this\.costumes[" + costumeIndex + "]\.resolution=1;")
-        }
-
-        return this.getModifiedContentForResource(indexJsContent, costume.asset, costumeUrl, 'image', costume.ext == 'svg' ? 'svg+xml' : costume.ext);
+    projectChangedHandler() {
+        // Post the message to vscode to see the ".sb3" as modified
+        window.parent.postMessage(
+            {type: 'scratch content changed'},
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*'
+        );
+        // For the response handler: @see constructor()
     }
 
-    getModifiedContentForSound(indexJsContent, sound, soundUrl) {
-        return this.getModifiedContentForResource(indexJsContent, sound.asset, soundUrl, "audio", sound.ext);
-    }
-
-    /** Replaces the actual URL with the corresponding data URL */
-    getModifiedContentForResource(indexJsContent, resourceContent, resourceUrl, dataType, ext) {
-        var base64Data = this.arrayBufferToBase64(resourceContent);
-        var dataUri = `data:${dataType}/${ext};base64,${base64Data}`;
-        return indexJsContent.replace(resourceUrl, dataUri);
-    }
-
-    generateJsProject() {
+    generateJsProject () {
         this.props.saveProjectSb3().then(async content => {
             const project = await Project.fromSb3(content);
             const files = project.toLeopard(
                 {
                     printWidth: 100,
-                    tabWidth: 2, // Set the tab width for both HTML and JavaScript
-                    htmlWhitespaceSensitivity: "strict"
+                    tabWidth: 2,
+                    htmlWhitespaceSensitivity: 'strict'
                 },
                 {
                     plugins: [parserBabel, parserHtml],
-                    tabWidth: 2,
-                },
+                    tabWidth: 2
+                }
             );
 
-            var filesMap = {};
-
-            var indexJsContent = "";
-            var otherJsFiles = {};
-            var htmlContent;
-
-            for (var fileName in files) {
-                if (fileName === "index.js") {
-                    indexJsContent = files[fileName];
-                } else if (fileName.endsWith(".js")) {
-                    otherJsFiles[fileName] = files[fileName];
-                } else {
-                    // There is only one html file: index.html
-                    htmlContent = files[fileName];
-                }
-                filesMap[fileName] = files[fileName];
-            }
-
-            // Replace each import of a js file with the actual content of that file
-            for (var fileName in otherJsFiles) {
-                var componentName = fileName.substring(fileName.lastIndexOf("/") + 1, fileName.lastIndexOf(".js"));
-                var content = otherJsFiles[fileName];
-                if (content.indexOf("extends Sprite") >= 0) {
-                    // The `Sprite` is already imported in the main index.js file. 
-                    // So we need to avoid importing it again (else an error is thrown).
-                    content = content.replace(/import {\s*Sprite(?:.|\s)+?;/, '');
-                }
-                indexJsContent = indexJsContent.replace('import ' + componentName + ' from "./' + fileName + '";', "\n" + content + "\n");
-            }
-
-            // We need to erase all the exports to avoid errors
-            indexJsContent = indexJsContent.replaceAll("export default", "");
-
-            // Replace the actual urls of sound and costumes with the corresponding data url
+            // The files contains only the js files. Add also the assets files
             for (const costume of project.stage.costumes) {
-                const fileUrl = "./Stage/costumes/" + costume.name + "." + costume.ext;
-                indexJsContent = this.getModifiedContentForCostume(
-                    indexJsContent,
-                    costume,
-                    fileUrl,
-                    project.stage.costumes.indexOf(costume)
-                );
-                filesMap[fileUrl] = costume.asset;
+                files[`./Stage/costumes/${costume.name}.${costume.ext}`] = costume.asset;
             }
 
             for (const sprite of project.sprites) {
                 for (const costume of sprite.costumes) {
-                    const fileUrl = "./" + sprite.name + "/costumes/" + costume.name + "." + costume.ext;
-                    indexJsContent = this.getModifiedContentForCostume(
-                        indexJsContent,
-                        costume,
-                        fileUrl,
-                        sprite.costumes.indexOf(costume)
-                    );
-                    filesMap[fileUrl] = costume.asset;
+                    files[`./${sprite.name}/costumes/${costume.name}.${costume.ext}`] = costume.asset;
                 }
             }
 
             for (const sound of project.stage.sounds) {
-                const fileUrl = "./Stage/sounds/" + sound.name + "." + sound.ext;
-                indexJsContent = this.getModifiedContentForSound(indexJsContent, sound, fileUrl);
-                filesMap[fileUrl] = sound.asset;
+                files[`./Stage/sounds/${sound.name}.${sound.ext}`] = sound.asset;
             }
 
             for (const sprite of project.sprites) {
                 for (const sound of sprite.sounds) {
-                    const fileUrl = "./" + sprite.name + "/sounds/" + sound.name + "." + sound.ext;
-                    indexJsContent = this.getModifiedContentForSound(indexJsContent, sound, fileUrl);
-                    filesMap[fileUrl] = sound.asset;
+                    files[`./${sprite.name}/sounds/${sound.name}.${sound.ext}`] = sound.asset;
                 }
             }
 
-            // Insert the js code into html code
-            htmlContent = htmlContent.replace('import project from "./index.js";', indexJsContent + "\n");
-            this.setState({
-                // if the settingWasUpdated message is displayed, this will be the ID of its removal timer
-                htmlContent: htmlContent,
-                leopardFilesMap: filesMap
-            });
+            this.loadFilesIntoIFrame(files);
+            this.saveLeopardFilesToVscode(files);
         });
     }
 
-    loadFromServer() {
-        fetch("http://localhost:3000/api/load")
-            .then(response => response.json())
-            .then((response) => {
-                for (const [fileName, fileInfo] of Object.entries(response.filesMap)) {
-                    if (fileName.includes("project.sb3")) {
-                        const content = atob(fileInfo.content);
-                        const byteArray = new Uint8Array(content.length);
-                        for (let i = 0; i < content.length; i++) {
-                            byteArray[i] = content.charCodeAt(i);
-                        }
-                        return this.props.vm.loadProject(byteArray);
-                    } else if (fileName.includes("iframe.html")) {
-                        this.setState({
-                            htmlContent: atob(fileInfo.content)
-                        });
-                    }
-                }
-            });
+    loadScratchFileFromVscode() {
+        window.parent.postMessage(
+            {type: 'loadScratchFile'},
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*'
+        );
     }
 
-    saveToServer() {
-        this.props.saveProjectSb3().then(async content => {
-            const formData = new FormData();
-            formData.append("scratch", content, "project.sb3");
-            formData.append("iframe", new Blob([this.state.htmlContent], { type: 'text/html' }), "iframe.html");
+    loadLeopardFilesFromVscode() {
+        window.parent.postMessage(
+            {type: 'loadLeopardFiles'},
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*'
+        );
+    }
 
-            let i = 0;
-            for (const [url, content] of Object.entries(this.state.leopardFilesMap)) {
-                const lastSlashIndex = url.lastIndexOf('/');
-                const path = url.substring(0, lastSlashIndex); // "folder1/folder2"
-                const fileName = url.substring(lastSlashIndex + 1);
+    saveLeopardFilesToVscode (files) {
+        window.parent.postMessage(
+            {
+                type: 'saveLeopardFiles', 
+                body: files
+            },
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*' 
+        );
+    }
 
-                formData.append("leopard", new Blob([content], { type: 'text/plain' }), fileName);
-                formData.append("leopard[" + i + "]", path);
-                i++;
-            }
-
-            fetch("http://localhost:3000/api/save",
-                {
-                    method: "POST",
-                    body: formData
-                }
-            );
+    loadFilesIntoIFrame (files) {
+        this.setState({
+            leopardFiles: files
         });
-    }
 
-    componentDidUpdate(prevProps) {
-        if (this.props.projectChanged && !prevProps.projectChanged
-            || this.props.loadingState == LoadingState.SHOWING_WITHOUT_ID && prevProps.loadingState != LoadingState.SHOWING_WITHOUT_ID
-            || this.props.loadingState == LoadingState.SHOWING_WITH_ID && prevProps.loadingState != LoadingState.SHOWING_WITH_ID) {
-            this.generateJsProject();
+        if (!files || Object.keys(files).length === 0) {
+            return;
+        }
+
+        // Send the generated content to the service worker that will serve those files to the iframe
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(registration => {
+                registration.active.postMessage(files);
+            });
+
+            navigator.serviceWorker.addEventListener('message', event => {
+                this.setState({
+                    clientId: event.data,
+                    // This is needed to force the iframe to reload the content
+                    // Because at a regeneration, the URL remains the same
+                    // but the files served by the service worker changed
+                    iframeKey: (this.state.iframeKey === undefined) ? 0 : this.state.iframeKey + 1
+                });
+            });
+        } else {
+            console.log('Service worker absent');
         }
     }
 
-    render() {
+    getIFrameSrc (files, clientId) {
+        // Display an error message in case the files could not be loaded
+        if (!files || Object.keys(files).length == 0) {
+            return `data:text/html;charset=utf-8,${encodeURIComponent(`
+                <html>
+                    <body>
+                       <p> 
+                            No leopard files generated/found besides the '.sb3' file. </br> Try to press the <b>"Generate JS"</b>. </br>
+                            If this doesn't work, an error occured. Look in the console for any error messages.
+                        </p>
+                    </body>
+                </html>
+            `)}`;
+        }
+
+        return `http://localhost:8601/leopard.html?parentAppClientId=${clientId}`;
+    }
+
+    render () {
         const stageDimensions = getStageDimensions(this.props.stageSize, this.props.isFullScreen);
-        return <Box className={styles.stageWrapper}
+        return (<Box
+            className={styles.stageWrapper}
             style={{
                 height: stageDimensions.height,
-                width: stageDimensions.width,
-            }}>
+                width: stageDimensions.width
+            }}
+        >
             <Box className={styles.buttonsWrapper}>
                 <Button
                     className={styles.button}
@@ -229,20 +236,18 @@ class StageJSComponent extends React.Component {
                 </Button>
                 <Button
                     className={styles.button}
-                    onClick={this.loadFromServer}
+                    onClick={this.loadLeopardFilesFromVscode}
                 >
-                    Load (scratch + js)
-                </Button>
-                <Button
-                    className={styles.button}
-                    onClick={this.saveToServer}
-                >
-                    Save to server
+                    Load JS
                 </Button>
             </Box>
 
-            <iframe className={styles.iframe} src={"data:text/html;charset=utf-8," + encodeURIComponent(this.state.htmlContent)}></iframe>
-        </Box>;
+            <iframe
+                key={this.state.iframeKey}
+                className={styles.iframe}
+                src={this.getIFrameSrc(this.state.leopardFiles, this.state.clientId)}
+            />
+        </Box>);
     }
 }
 
@@ -256,3 +261,4 @@ const mapStateToProps = state => ({
 export default injectIntl(connect(
     mapStateToProps
 )(StageJSComponent));
+

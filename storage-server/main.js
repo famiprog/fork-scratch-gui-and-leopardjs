@@ -5,9 +5,8 @@ const cors = require('cors');
 const fs = require('fs-extra');
 
 const app = express();
-const port = 3000;
-
-// TODO CSR: rename/move in storage-server/main.js. De asemenea, scriptul npm tr sa aiba numele storage-server
+const port = 3001;
+const OUT_FOLDER = "storage-server/data";
 
 function ensureDirectoryExistence(filePath) {
   var dirname = path.dirname(filePath);
@@ -79,30 +78,29 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Route to handle file uploads
-app.post('/api/save', [upload.fields([{ name: "scratch", maxCount: 1 }, { name: "leopard", maxCount: 100 }, { name: "iframe", maxCount: 1 }])], (req, res) => {
-  const outputDir = 'out';
-
+app.post('/api/save', [upload.fields([{ name: "scratch", maxCount: 1 }, { name: "leopard", maxCount: 100 }])], (req, res) => {
   // Delete old saved files
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+  if (!fs.existsSync(OUT_FOLDER)) {
+    fs.mkdirSync(OUT_FOLDER, { recursive: true });
   } else {
-    deleteDirectoryContents(outputDir)
+    deleteDirectoryContents(OUT_FOLDER)
   }
 
   // Save the new received files
-  // TODO CSR: a pune "out" ca o constanta ar trebui sa fie un reflex. Sa salvam in storage-server/data
-  saveAsset(req.files.scratch[0].buffer, path.join("out", "scratch"), req.files.scratch[0].originalname);
-  saveAsset(req.files.iframe[0].buffer, path.join("out", "iframe"), req.files.iframe[0].originalname);
+  saveAsset(req.files.scratch[0].buffer, path.join(OUT_FOLDER, "scratch"), req.files.scratch[0].originalname);
   for (var i = 0; i < req.files.leopard.length; i++) {
     const file = req.files.leopard[i];
-    saveAsset(file.buffer, path.join("out", "leopard", req.body["leopard"][i]), file.originalname);
+    saveAsset(file.buffer, path.join(OUT_FOLDER, "leopard", req.body["leopard"][i]), file.originalname);
   }
 });
 
 // Route to handle file downloads
 app.get('/api/load', async (req, res) => {
   try {
-    const baseDir = path.join(".", 'out');
+    if (!fs.existsSync(OUT_FOLDER)) {
+        fs.mkdirSync(OUT_FOLDER, { recursive: true });
+    } 
+    const baseDir = path.join(".", OUT_FOLDER);
     const filesMap = await readFilesRecursively(baseDir);
     res.json({ filesMap });
   } catch (error) {
