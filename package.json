@@ -26,7 +26,7 @@
     "test:smoke": "jest --runInBand test[\\\\/]smoke",
     "watch": "webpack --colors --watch",
     "storage-server": "node storage-server/main.js",
-    "start-all": "concurrently \"npm run start\" \"npm run storage-server\""
+    "start-all": "concurrently \"npm run start\" \"cd scratch-vscode-web && npm run watch-web\" \"cd scratch-vscode-web; npm run run-in-browser\""
   },
   "config": {
     "commitizen": {
