@@ -25,56 +25,84 @@ class StageJSComponent extends React.Component {
         super(props);
         bindAll(this, [
             'generateJsProject',
-            'loadFromServer',
-            'saveToServer'
+            'loadLeopardFilesFromVscode',
+            'loadScratchFileFromVscode',
+            'saveLeopardFilesToVscode'
         ]);
         this.state = {};
-        
-        // TODO DB If we will always use the application only as an extension inside VS code, 
-        // window.parent != window will always be true so this check should be remove
-        if (window.parent != window) {
-            window.addEventListener('message', event => {
-                var isTrusted = TRUSTED_ORIGINS_PATTERNS.some(function(origin) {
-                    return origin.test(event.origin);
-                });
-                if (!isTrusted) {
-                    return;
-                }
-                switch (event.data.command) {
-                    case 'load files response':
-                        const filesForIFrame = {};
-                        for (const [fileName, fileInfo] of Object.entries(event.data.files)) {
-                            let content = fileInfo;
-                            if (fileName.endsWith('.html') || fileName.includes('.js') || fileName.includes('.svg')) {
-                                content = new TextDecoder('utf-8').decode(content);
-                            }
 
-                            if (fileName.includes('project.sb3')) {
-                                // Load the Scratch project
-                                this.props.vm.loadProject(content);
-                            } else {
-                                filesForIFrame[fileName] = content;
-                            }
-                        }
-                        // Load the Leopard js project
-                        this.loadFilesIntoIFrame(filesForIFrame);
-                        break;
-                }
-            });
+        if (window.parent == window) {
+            throw new Error("This app should be embeded inside a vscode editor");
         }
+        
+        //TODO DB: add an "update" event listener when the file is modified from another editor
+        window.addEventListener('message', event => {
+            var isTrusted = TRUSTED_ORIGINS_PATTERNS.some(function(origin) {
+                return origin.test(event.origin);
+            });
+            if (!isTrusted) {
+                return;
+            }
+            const { type, body, requestId } = event.data;
+            switch (type) {
+                case 'loadScratchFileResponce':
+                    // The loadProject() triggers PROJECT_CHANGED events (on every target, block, costume, sound, etc creation). 
+                    // We want to avoid this
+                    this.props.vm.off('PROJECT_CHANGED', this.projectChangedHandler);
+                    this.props.vm.loadProject(body).then(() => {
+                        this.props.vm.on('PROJECT_CHANGED', this.projectChangedHandler);
+                    });
+                    break;
+                case 'loadLeopardFilesResponce':
+                    const filesForIFrame = {};
+                    for (const [fileName, fileInfo] of Object.entries(body)) {
+                        let content = fileInfo;
+                        if (fileName.endsWith('.html') || fileName.includes('.js') || fileName.includes('.svg')) {
+                            content = new TextDecoder('utf-8').decode(content);
+                        }
+                        filesForIFrame[fileName] = content;
+                    }
+                    // Load the Leopard js project
+                    this.loadFilesIntoIFrame(filesForIFrame);
+                    break;
+                case 'getScratchFile':
+                    this.props.saveProjectSb3().then(async content => {
+                        // The content is a BLOB and we need to convert it to Uint8Array.
+                        // This is because the message is redirected by the webview to the vscode extension using `vscode.postMessage`(@ see extension.ts#_getHtmlForWebview)
+                        // But `vscode.postMessage` doesn't accept sending BLOBs (see https://code.visualstudio.com/api/references/vscode-api#Webview)
+                        const scratchContent = new Uint8Array(await new Response(content).arrayBuffer());
+                        
+                        window.parent.postMessage(
+                            {
+                                type: 'response', 
+                                requestId,
+                                body: scratchContent
+                            },
+                            // TODO DB: Maybe we should specify a more specific targetOrigin
+                            '*' 
+                        );
+                    });
+                    break;
+            }
+        });
     }
 
     componentDidMount() {
-        this.loadFromServer();
+        this.props.vm.on('PROJECT_CHANGED', this.projectChangedHandler);
+        this.loadScratchFileFromVscode();
+        this.loadLeopardFilesFromVscode();
     }
 
-    componentWillReceiveProps (prevProps) {
-        if (this.props.projectChanged && !prevProps.projectChanged ||
-            this.props.loadingState == LoadingState.SHOWING_WITHOUT_ID && prevProps.loadingState != LoadingState.SHOWING_WITHOUT_ID ||
-            this.props.loadingState == LoadingState.SHOWING_WITH_ID && prevProps.loadingState != LoadingState.SHOWING_WITH_ID) {
-            this.generateJsProject();
-        }
+    projectChangedHandler() {
+        // Post the message to vscode to see the ".sb3" as modified
+        window.parent.postMessage(
+            {type: 'scratch content changed'},
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*'
+        );
+        // For the response handler: @see constructor()
     }
+
     generateJsProject () {
         this.props.saveProjectSb3().then(async content => {
             const project = await Project.fromSb3(content);
@@ -112,97 +140,35 @@ class StageJSComponent extends React.Component {
             }
 
             this.loadFilesIntoIFrame(files);
+            this.saveLeopardFilesToVscode(files);
         });
     }
-    
-    /**
-     * Helper function
-     */
-    toByteArray (string) {
-        const byteArray = new Uint8Array(string.length);
-        for (let i = 0; i < string.length; i++) {
-            byteArray[i] = string.charCodeAt(i);
-        }
-        return byteArray;
+
+    loadScratchFileFromVscode() {
+        window.parent.postMessage(
+            {type: 'loadScratchFile'},
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*'
+        );
     }
 
-    loadFromServer () {
-        // TODO DB If we will always use the application only as an extension inside VS code, 
-        // window.parent != window will always be true so this check should be remove so also the else branch
-        if (window.parent != window) {
-            window.parent.postMessage(
-                {command: 'load files'},
-                // TODO DB: Maybe we should specify a more specific targetOrigin
-                '*'
-            );
-            // For the response handler: @see constructor()
-        } else {
-            fetch('http://localhost:3001/api/load')
-                .then(response => response.json())
-                .then(response => {
-                    const filesForIFrame = {};
-                    for (const [fileName, fileInfo] of Object.entries(response.filesMap)) {
-                        let content = atob(fileInfo.content);
-                        if (fileName.includes('costumes') || fileName.includes('sounds') || fileName.includes('project.sb3')) {
-                            content = this.toByteArray(content);
-                        }
-
-                        if (fileName.includes('project.sb3')) {
-                            this.props.vm.loadProject(content);
-                        } else {
-                            filesForIFrame[fileName.replace('storage-server/data/leopard', '.')] = content;
-                        }
-                    }
-
-                    this.loadFilesIntoIFrame(filesForIFrame);
-                });
-        }
+    loadLeopardFilesFromVscode() {
+        window.parent.postMessage(
+            {type: 'loadLeopardFiles'},
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*'
+        );
     }
 
-    saveToServer () {
-        this.props.saveProjectSb3().then(async content => {
-            // TODO DB If we will always use the application only as an extension inside VS code, 
-            // window.parent != window will always be true so this check should be remove so also the else branch
-            if (window.parent != window) {
-                // The content is a BLOB and we need to convert it to Uint8Array.
-                // This is because the message is redirected by the webview to the vscode extension using `vscode.postMessage`(@ see extension.ts#_getHtmlForWebview)
-                // But `vscode.postMessage` doesn't accept sending BLOBs (see https://code.visualstudio.com/api/references/vscode-api#Webview)
-                const scratchContent = new Uint8Array(await new Response(content).arrayBuffer());
-                
-                window.parent.postMessage(
-                    {
-                        command: 'save files', 
-                        files:{
-                            "scratch": scratchContent,
-                            "leopard": this.state.leopardFiles
-                        }
-                    },
-                    // TODO DB: Maybe we should specify a more specific targetOrigin
-                    '*' 
-                );
-            } else {
-                const formData = new FormData();
-                formData.append('scratch', content, 'project.sb3');
-
-                let i = 0;
-                for (const [url, content] of Object.entries(this.state.leopardFiles)) {
-                    const lastSlashIndex = url.lastIndexOf('/');
-                    const path = url.substring(0, lastSlashIndex);
-                    const fileName = url.substring(lastSlashIndex + 1);
-
-                    formData.append('leopard', new Blob([content], {type: 'text/plain'}), fileName);
-                    formData.append(`leopard[${i}]`, path);
-                    i++;
-                }
-
-                fetch('http://localhost:3001/api/save',
-                    {
-                        method: 'POST',
-                        body: formData
-                    }
-                );
-            }
-        });
+    saveLeopardFilesToVscode (files) {
+        window.parent.postMessage(
+            {
+                type: 'saveLeopardFiles', 
+                body: files
+            },
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*' 
+        );
     }
 
     loadFilesIntoIFrame (files) {
@@ -241,7 +207,7 @@ class StageJSComponent extends React.Component {
                 <html>
                     <body>
                        <p> 
-                            No leopard files generated/found on server. </br> Try to press the <b>"Generate JS"</b> followed by <b>"Save to server"</b> button. </br>
+                            No leopard files generated/found besides the '.sb3' file. </br> Try to press the <b>"Generate JS"</b>. </br>
                             If this doesn't work, an error occured. Look in the console for any error messages.
                         </p>
                     </body>
@@ -270,15 +236,9 @@ class StageJSComponent extends React.Component {
                 </Button>
                 <Button
                     className={styles.button}
-                    onClick={this.loadFromServer}
+                    onClick={this.loadLeopardFilesFromVscode}
                 >
-                    Load (scratch + js)
-                </Button>
-                <Button
-                    className={styles.button}
-                    onClick={this.saveToServer}
-                >
-                    Save to server
+                    Load JS
                 </Button>
             </Box>
 
@@ -301,3 +261,4 @@ const mapStateToProps = state => ({
 export default injectIntl(connect(
     mapStateToProps
 )(StageJSComponent));
+
