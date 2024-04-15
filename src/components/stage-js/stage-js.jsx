@@ -49,9 +49,19 @@ class StageJSComponent extends React.Component {
                     // The loadProject() triggers PROJECT_CHANGED events (on every target, block, costume, sound, etc creation). 
                     // We want to avoid this
                     this.props.vm.off('PROJECT_CHANGED', this.projectChangedHandler);
-                    this.props.vm.loadProject(body).then(() => {
-                        this.props.vm.on('PROJECT_CHANGED', this.projectChangedHandler);
-                    });
+                    if (body.length != 0) {
+                        this.props.vm.loadProject(body).then(() => {
+                            this.props.vm.on('PROJECT_CHANGED', this.projectChangedHandler);
+                        }); 
+                    } else {
+                        // If the .sb3 file is empty on vscode, don't load nothing because there is already a default project that is loaded by the scratch app.
+                        // Instead, signal vscode that there is a new scratch project (the default one) that can be saved.
+                        window.parent.postMessage(
+                            {type: 'scratch content changed'},
+                            // TODO DB: Maybe we should specify a more specific targetOrigin
+                            '*'
+                        );
+                    }
                     break;
                 case 'loadLeopardFilesResponce':
                     const filesForIFrame = {};

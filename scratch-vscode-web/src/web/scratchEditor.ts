@@ -172,7 +172,7 @@ export class ScratchEditorProvider implements vscode.CustomEditorProvider<Scratc
 			{
 				webviewOptions: {
                     // TODO DB: make this true for testing purpose
- 					retainContextWhenHidden: false,
+ 					retainContextWhenHidden: true,
 				},
 				supportsMultipleEditorsPerDocument: false,
 			});

@@ -9,11 +9,6 @@
   "categories": [
     "Other"
   ],
-  "// activationEvents" : "Our extension, besides adding the scratch custom editor, modifies the 'autosave' setup to 'off'", 
-  "// activationEvents1" : "And we need this setup active for all editors not only for the scratch editor, just after the vscode starts",
-  "activationEvents": [
-    "onStartupFinished"
-	],
   "browser": "./dist/web/extension.js",
   "contributes": 
     {"customEditors": [
