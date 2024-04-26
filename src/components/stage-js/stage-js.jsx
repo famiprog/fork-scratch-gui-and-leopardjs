@@ -10,6 +10,7 @@ import Button from '../button/button.jsx';
 import styles from './stage-js.css';
 import {getStageDimensions} from '../../lib/screen-utils';
 import Box from '../box/box.jsx';
+import { Console } from 'minilog';
 
 const TRUSTED_ORIGINS_PATTERNS = [
     // In development, the address (of the webview of the vscode extension) looks like: 
@@ -23,11 +24,10 @@ class StageJSComponent extends React.Component {
     
     constructor (props) {
         super(props);
+
         bindAll(this, [
             'generateJsProject',
-            'loadLeopardFilesFromVscode',
-            'loadScratchFileFromVscode',
-            'saveLeopardFilesToVscode'
+            'reloadIFrame',
         ]);
         this.state = {};
 
@@ -43,13 +43,15 @@ class StageJSComponent extends React.Component {
             if (!isTrusted) {
                 return;
             }
+
             const { type, body, requestId } = event.data;
             switch (type) {
-                case 'loadScratchFileResponce':
-                    // The loadProject() triggers PROJECT_CHANGED events (on every target, block, costume, sound, etc creation). 
-                    // We want to avoid this
-                    this.props.vm.off('PROJECT_CHANGED', this.projectChangedHandler);
+                case 'loadScratchFileResponse':
                     if (body.length != 0) {
+                        // The loadProject() triggers PROJECT_CHANGED events (on every target, block, costume, sound, etc creation). 
+                        // We want to avoid this
+                        this.props.vm.off('PROJECT_CHANGED', this.projectChangedHandler);
+                        
                         this.props.vm.loadProject(body).then(() => {
                             this.props.vm.on('PROJECT_CHANGED', this.projectChangedHandler);
                         }); 
@@ -57,23 +59,17 @@ class StageJSComponent extends React.Component {
                         // If the .sb3 file is empty on vscode, don't load nothing because there is already a default project that is loaded by the scratch app.
                         // Instead, signal vscode that there is a new scratch project (the default one) that can be saved.
                         window.parent.postMessage(
-                            {type: 'scratch content changed'},
+                            {type: 'scratchContentChanged'},
                             // TODO DB: Maybe we should specify a more specific targetOrigin
                             '*'
                         );
                     }
                     break;
-                case 'loadLeopardFilesResponce':
-                    const filesForIFrame = {};
-                    for (const [fileName, fileInfo] of Object.entries(body)) {
-                        let content = fileInfo;
-                        if (fileName.endsWith('.html') || fileName.includes('.js') || fileName.includes('.svg')) {
-                            content = new TextDecoder('utf-8').decode(content);
-                        }
-                        filesForIFrame[fileName] = content;
-                    }
-                    // Load the Leopard js project
-                    this.loadFilesIntoIFrame(filesForIFrame);
+                case 'getFileResponse':
+                        // Redirect the file received from vscode to the service worker that initialy requested it
+                        navigator.serviceWorker.ready.then(registration => {
+                            registration.active.postMessage({ type: "getFileFromVSCodeResponse", fileContent: event.data.fileContent, requestUId: event.data.requestUId });
+                        });
                     break;
                 case 'getScratchFile':
                     this.props.saveProjectSb3().then(async content => {
@@ -93,20 +89,51 @@ class StageJSComponent extends React.Component {
                         );
                     });
                     break;
+                case 'saveLeopardFilesResponse':
+                    this.reloadIFrame();
+                    break;
             }
         });
     }
 
     componentDidMount() {
         this.props.vm.on('PROJECT_CHANGED', this.projectChangedHandler);
-        this.loadScratchFileFromVscode();
-        this.loadLeopardFilesFromVscode();
+        setTimeout(() => this.loadScratchFileFromVscode(), 3000);
+        
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', event => {
+                switch(event.data.type) {
+                    case "getClientIdResponse":
+                        this.setState({
+                            clientId: event.data.clientId
+                        });
+                      break;
+                    case "getFileFromVSCode":
+                      window.parent.postMessage(
+                            {type: 'getFile', body: event.data.path, requestUId: event.data.requestUId},
+                            // TODO DB: Maybe we should specify a more specific targetOrigin
+                            '*'
+                        );
+                      break;
+                  }
+            });
+
+            // When the iframe requests a file from the service worker, the service worker needs to request that file from the vscode app. 
+            // But because it can not do this directly, it should message first the scratch app (via stage-js component), that forwards the message to the vscode app
+            // For this, the scratch app needs to initiate the communication with the service worker in order to store its clientId. 
+            // This client id is later forwarded back to the service worker when the iframe requests(fetches) some file from the service worker
+            navigator.serviceWorker.ready.then(registration => {
+                registration.active.postMessage({type: "getClientId"});
+            });
+        } else {
+            console.log('Service worker absent');
+        }
     }
 
     projectChangedHandler() {
         // Post the message to vscode to see the ".sb3" as modified
         window.parent.postMessage(
-            {type: 'scratch content changed'},
+            {type: 'scratchContentChanged'},
             // TODO DB: Maybe we should specify a more specific targetOrigin
             '*'
         );
@@ -149,25 +176,8 @@ class StageJSComponent extends React.Component {
                 }
             }
 
-            this.loadFilesIntoIFrame(files);
             this.saveLeopardFilesToVscode(files);
         });
-    }
-
-    loadScratchFileFromVscode() {
-        window.parent.postMessage(
-            {type: 'loadScratchFile'},
-            // TODO DB: Maybe we should specify a more specific targetOrigin
-            '*'
-        );
-    }
-
-    loadLeopardFilesFromVscode() {
-        window.parent.postMessage(
-            {type: 'loadLeopardFiles'},
-            // TODO DB: Maybe we should specify a more specific targetOrigin
-            '*'
-        );
     }
 
     saveLeopardFilesToVscode (files) {
@@ -181,51 +191,19 @@ class StageJSComponent extends React.Component {
         );
     }
 
-    loadFilesIntoIFrame (files) {
-        this.setState({
-            leopardFiles: files
-        });
-
-        if (!files || Object.keys(files).length === 0) {
-            return;
-        }
-
-        // Send the generated content to the service worker that will serve those files to the iframe
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.ready.then(registration => {
-                registration.active.postMessage(files);
-            });
-
-            navigator.serviceWorker.addEventListener('message', event => {
-                this.setState({
-                    clientId: event.data,
-                    // This is needed to force the iframe to reload the content
-                    // Because at a regeneration, the URL remains the same
-                    // but the files served by the service worker changed
-                    iframeKey: (this.state.iframeKey === undefined) ? 0 : this.state.iframeKey + 1
-                });
-            });
-        } else {
-            console.log('Service worker absent');
-        }
+    loadScratchFileFromVscode() {
+        window.parent.postMessage(
+            {type: 'loadScratchFile'},
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*'
+        );
     }
 
-    getIFrameSrc (files, clientId) {
-        // Display an error message in case the files could not be loaded
-        if (!files || Object.keys(files).length == 0) {
-            return `data:text/html;charset=utf-8,${encodeURIComponent(`
-                <html>
-                    <body>
-                       <p> 
-                            No leopard files generated/found besides the '.sb3' file. </br> Try to press the <b>"Generate JS"</b>. </br>
-                            If this doesn't work, an error occured. Look in the console for any error messages.
-                        </p>
-                    </body>
-                </html>
-            `)}`;
-        }
-
-        return `http://localhost:8601/leopard.html?parentAppClientId=${clientId}`;
+    reloadIFrame() {
+        this.setState({
+            // This is needed to force the iframe to reload its content
+            iframeKey: (this.state.iframeKey === undefined) ? 0 : this.state.iframeKey + 1
+        });
     }
 
     render () {
@@ -246,7 +224,7 @@ class StageJSComponent extends React.Component {
                 </Button>
                 <Button
                     className={styles.button}
-                    onClick={this.loadLeopardFilesFromVscode}
+                    onClick={this.reloadIFrame}
                 >
                     Load JS
                 </Button>
@@ -255,7 +233,7 @@ class StageJSComponent extends React.Component {
             <iframe
                 key={this.state.iframeKey}
                 className={styles.iframe}
-                src={this.getIFrameSrc(this.state.leopardFiles, this.state.clientId)}
+                src={`http://localhost:8601/leopard/index.html?parentAppClientId=${this.state.clientId}`}
             />
         </Box>);
     }

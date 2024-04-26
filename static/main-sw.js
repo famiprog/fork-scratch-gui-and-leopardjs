@@ -1,4 +1,4 @@
-const mimeTypes = {
+const MIME_TYPES = {
     '.html': 'text/html',
     '.css': 'text/css',
     '.js': 'application/javascript',
@@ -12,38 +12,6 @@ const mimeTypes = {
     // Add more mappings as needed
 };
 
-// Function to get the cache name for a specific client
-function getCacheName(clientId) {
-    return 'leopard-files-' + clientId;
-}
-
-// Function to store data in cache for a specific client
-async function cacheLeopardFilesForClient(clientId, data) {
-    const cacheName = getCacheName(clientId);
-    const cache = await caches.open(cacheName);
-    for (let fileName in data) {
-        // Look at the extension to determine the response content type
-        const urlParts = fileName.split('.');
-        if (urlParts.length < 2) {
-            throw new Error("For the moment only requesting files (with a proper extension) works inside the iframe and " + url + " doesn't have an extension");
-        }
-        // Don't know why leopard outputs the costumes and sound files named starting with "./" 
-        // but the stage and costume files names doesn't start with ./
-        await cache.put(fileName.startsWith("./") ? fileName : ("./" + fileName), new Response(data[fileName], { headers: { 'Content-Type': mimeTypes["." + urlParts[urlParts.length - 1]]} }));  
-    }
-}
-
-async function getLeopardFileFromCache(clientId, fileName) {
-    const cacheName = getCacheName(clientId);
-    const cache = await caches.open(cacheName);
-    const cachedResponse = await cache.match(fileName);
-
-    if (!cachedResponse) {
-        console.log("There was a problem when generating/loading from disk the leopard files for client " + clientId + ": " + fileName + " is missing");
-    }
-    return cachedResponse;
-}
-
 function getParentClientId(clientUrl) {
     var urlObject = new URL(clientUrl);
     var searchParams = new URLSearchParams(urlObject.search);
@@ -52,58 +20,108 @@ function getParentClientId(clientUrl) {
 }
 
 self.onmessage = async function(event) {
-    if (event.data == "cleanupCache") {
-        const cacheName = getCacheName(event.source.id);
-        caches.open(cacheName).then(function(cache) {
-            cache.keys().then(function(keys) {
-                keys.forEach(function(request, index, array) {
-                    cache.delete(request);
-                });
-            });
-        });
-    } else {
-        // Cache the received leopard files in order to serve them when they will be requested by the iframe
-        await cacheLeopardFilesForClient(event.source.id, event.data); 
+    if (event.data.type === 'getClientId') {
         // Inform the client about its id in order to be passed back as a parameter of the iframe src
-        // We need this because the service worker isn't aware of any relation between the main app client and the iframe client inside of it
-        // But we need to serve, for an iframe, the exact leopard files generated in its exact parent app. 
-        // This allows us to have many tabs opened with our application and each to have different leopard projects opened 
-        event.source.postMessage(event.source.id);
+        // We need this because the service worker isn't aware of any relation between the iframe that requests the leopard files,
+        // and the scratch parent app. The service worker message needs the id of the parent client app in order to get the requested files from vscode
+        event.source.postMessage({ type: 'getClientIdResponse', clientId: event.source.id});
     }
 };
 
+/**
+ * Because the comunication with vscode is asyncronous we need to match the responses with their corresponding requests
+ * In order to know which received content corresponds to which requested file
+ */
+function generateUIdForGetFileRequest(clientId, fileURL) {
+    return `${clientId}_${fileURL}`;
+}
 
+function isLeopardFileRequested(url) {
+    // The simple check: `.includes("leopard")` doesn't work keywork because
+    // for "https://unpkg.com/leopard@^1/dist/index.esm.js" the default fetching mechanism should be used
+    return url.includes("leopard/") || url.includes("leopard_ext/");
+}
+
+function get404Response(requestUrl) {
+    return new Response(`File not found: ${requestUrl} `, {
+        status: 404,
+        statusText: 'Not Found',
+        headers: new Headers({
+            'Content-Type': 'text/plain' // Set the content type as needed
+        })
+    });
+}
 
 self.addEventListener("fetch", function(event) {
     const urlString = event.request.url;
     const url = new URL(urlString);
-    if (urlString.includes("leopard.html")) {
-        var parentClientId = getParentClientId(urlString);
-        
+
+    if (!isLeopardFileRequested(urlString)) {
         event.respondWith(
-            (async function() {
-                return await getLeopardFileFromCache(parentClientId, "./index.html");
-            })()
-        ); 
-    } else {
-        event.respondWith(
-            (async function() {
-              const clients = await self.clients.matchAll({ includeUncontrolled: true });
-              
-              for (const client of clients) {
+            fetch(event.request)
+        );
+        return;
+    }
+
+    // Request the leopard files from VSCode
+    const responsePromise = new Promise(async function(resolve) {
+        var clientUrl;
+        // We need the client url in order to obtain the parent of the iframe clientId 
+        const clients = await self.clients.matchAll({ includeUncontrolled: true });
+        if (urlString.includes("index.html")) {
+            // The src of the iframe is the client url
+            clientUrl = urlString;
+        } else {
+            for (const client of clients) {
                 if (client.id === event.clientId) {
-                  if (client.url.includes("leopard.html") && (new URL(client.url).origin == url.origin)) {
-                    return await getLeopardFileFromCache(getParentClientId(client.url), "." + url.pathname);
-                  } else {
-                    return fetch(event.request);
-                  }
+                    if (client.url.includes("index.html") && (new URL(client.url).origin == url.origin)) {
+                    clientUrl = client.url;
+                    break;
+                    } 
                 }
-              }
-              
-              // If no matching client is found, proceed with default response
-              return fetch(event.request);
-            })()
-          );
+            } 
         }
+
+        // Find the client corresponding to the parentClientId
+        const parentClientId = getParentClientId(clientUrl)
+        var parentClient;
+        for (const client of clients) {
+            if (client.id === parentClientId) {
+                //   return await getLeopardFileFromCache(getParentClientId(client.url), "." + url.pathname);
+                parentClient = client;
+                break;
+            }
+        } 
+        
+        if (!parentClient) {
+            throw new Error("No parent client found for the request of " + urlString);
+        }
+
+        // Respond to the initial "fetch" with the file received from vscode
+        const pathAndExtension = url.pathname.split('.');
+        if (pathAndExtension.length < 2) {
+            throw new Error("For the moment only requesting files (with a proper extension) works inside the iframe and " + url + " doesn't have an extension");
+        }
+
+        // Listen for file received from VSCode
+        const getFileFromVSCodeHandler = function(event) {
+            if (event.data && event.data.type === 'getFileFromVSCodeResponse' && event.data.requestUId == requestUId) {
+                // Remove the message event listener once the response is received
+                self.removeEventListener('message', getFileFromVSCodeHandler);
+                if (!event.data.fileContent) {
+                    resolve(get404Response(urlString));
+                } else {
+                    resolve(new Response(event.data.fileContent, { headers: { 'Content-Type': MIME_TYPES["." + pathAndExtension[pathAndExtension.length - 1]]}}));
+                }
+            }
+            };
+        self.addEventListener('message', getFileFromVSCodeHandler);
+
+        // Request file from VSCode
+        const requestUId = generateUIdForGetFileRequest(parentClientId, url.pathname);
+        parentClient.postMessage({ type: 'getFileFromVSCode', path: url.pathname, requestUId});
+      });
+
+    event.respondWith(responsePromise); 
 });
 

@@ -68,17 +68,6 @@ export default appTarget => {
             })
     } else {
         console.log("Service worker absent");
-    } 
-
-    if (typeof window === 'object') {
-        window.addEventListener('unload', function(event) {
-            // Communicate with the service worker to trigger cache cleanup
-            if ("serviceWorker" in navigator) { 
-                navigator.serviceWorker.ready.then((registration) => {
-                    registration.active.postMessage('cleanupCache');
-                });
-            }
-        });
     }  
      
     ReactDOM.render(

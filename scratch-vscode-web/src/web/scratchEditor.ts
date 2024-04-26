@@ -130,10 +130,8 @@ class ScratchDocument extends Disposable implements vscode.CustomDocument {
 	async revert(_cancellation: vscode.CancellationToken): Promise<void> {
 		const diskContent = await ScratchDocument.readFile(this.uri);
 		this._documentData = diskContent;
-		// this._edits = this._savedEdits;
 		this._onDidChangeDocument.fire({
 			content: diskContent,
-			// edits: this._edits,
 		});
 	}
 
@@ -311,37 +309,43 @@ export class ScratchEditorProvider implements vscode.CustomEditorProvider<Scratc
 		switch (message.type) {
 			// Equivalent to `init` from the `custom-editor-sample/pawEditorDraw`
 			case 'loadScratchFile':
-				webviewPanel.webview.postMessage({type: "loadScratchFileResponce", body: document.documentData});
+				webviewPanel.webview.postMessage({type: "loadScratchFileResponse", body: document.documentData});
 				break;
 
-			case 'loadLeopardFiles':
-				const files: {[key: string]: any} = {};
-				await readFilesInFolder(vscode.Uri.joinPath(getParentFolder(document.uri), LEOPARD_FOLDER), files, getParentFolder(document.uri));
-				// Message the webview to redirect further to the scratch app
-				webviewPanel.webview.postMessage({type: "loadLeopardFilesResponce", body: files});
+			case 'getFile':
+				const fileUri = vscode.Uri.joinPath(getParentFolder(document.uri), message.body);
+				const baseResponse =  {type: "getFileResponse", requestUId: message.requestUId};
+				try {
+					const fileContent = await vscode.workspace.fs.readFile(fileUri);
+					webviewPanel.webview.postMessage({...baseResponse, fileContent});
+					break;
+				} catch (error) {
+					console.log(`File ${fileUri} not found`);
+					webviewPanel.webview.postMessage({...baseResponse});
+				}
 				break;
 
 			case 'saveLeopardFiles':
 				const leopardFolderUri = vscode.Uri.joinPath(getParentFolder(document.uri), LEOPARD_FOLDER);
 				// Additional save also the associated leopard files (in a "leopard" folder placed besides the .sb3 file) 
-				await emptyFolderRecursively(leopardFolderUri);
+				await deleteFolderRecursively(leopardFolderUri);
 				for (const [url, content] of Object.entries(message.body)) {
 					await writeFile(url.replace("./", ""), leopardFolderUri,  content as Uint8Array|ArrayBuffer|String);
 				}
 		
 				vscode.commands.executeCommand('workbench.files.action.refreshFilesExplorer');
-			break;
+				webviewPanel.webview.postMessage({type: "saveLeopardFilesResponse"});	
+				break;
 
-			case 'scratch content changed':
-				// document.makeEdit(message as PawDrawEdit);
+			case 'scratchContentChanged':
 				document.makeEdit();
-                return;
+                break;
 
 			case 'response':
 				{
 					const callback = this._callbacks.get(message.requestId);
 					callback?.(message.body);
-					return;
+					break;
 				}
 		}
 	}
@@ -387,21 +391,7 @@ function getParentFolder(uri: vscode.Uri):vscode.Uri {
     return vscode.Uri.joinPath(uri, '..');
 }
 
-async function readFilesInFolder(folderPath:vscode.Uri, outputFiles:{[key: string]: any}, parentFolderUri:vscode.Uri) {
-	const fileEntries = await vscode.workspace.fs.readDirectory(folderPath);
-	for (const [name, type] of fileEntries) {
-		const uri:vscode.Uri = vscode.Uri.joinPath(folderPath, name);
-		if (type === vscode.FileType.File) {
-			// Add the file to the map
-			outputFiles[uri.path.replace(`${parentFolderUri.path}/${LEOPARD_FOLDER}`, '.')] = await vscode.workspace.fs.readFile(uri);
-		} else {
-			// Read folder recursive
-			await readFilesInFolder(uri, outputFiles, parentFolderUri);
-		}
-	}
-}
-
-async function emptyFolderRecursively(uri:vscode.Uri) {
+async function deleteFolderRecursively(uri:vscode.Uri) {
 	try {
 		// Check if the folder exists
 		const folderExists = await vscode.workspace.fs.stat(uri).then(stats => stats.type === vscode.FileType.Directory, () => false);
@@ -412,12 +402,10 @@ async function emptyFolderRecursively(uri:vscode.Uri) {
 			// Delete each file in the folder and empty child folders recursively
 			for (const [name, type] of files) {
 				const fileUri = vscode.Uri.joinPath(uri, name);
-				if (type === vscode.FileType.File) {
-					await vscode.workspace.fs.delete(fileUri);
-				} else {
-					// read folder recursive
-					await emptyFolderRecursively(fileUri);
+				if (type === vscode.FileType.Directory) {
+					await deleteFolderRecursively(fileUri);
 				}
+				await vscode.workspace.fs.delete(fileUri);
 			}
 		}
 	} catch (error: any) {
