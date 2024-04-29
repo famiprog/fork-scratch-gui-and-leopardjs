@@ -16,7 +16,8 @@ const TRUSTED_ORIGINS_PATTERNS = [
     // In development, the address (of the webview of the vscode extension) looks like: 
     // http://12q9ut155tm2e1m5qvsri5pjgd6o913mctten638icadgb6o58bq.localhost:3000.
     // So it contains a dynamic generated part. That's why we need to use regexp
-    /^http:\/\/\w+\.localhost:3000$/
+    /^http:\/\/\w+\.localhost:3000$/,
+    /^vscode-webview:\/\//
     // Add more trusted origins for production 
 ];
 
