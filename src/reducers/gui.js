@@ -30,6 +30,7 @@ import toolboxReducer, {toolboxInitialState} from './toolbox';
 import vmReducer, {vmInitialState} from './vm';
 import vmStatusReducer, {vmStatusInitialState} from './vm-status';
 import workspaceMetricsReducer, {workspaceMetricsInitialState} from './workspace-metrics';
+import stageJsFilesVersionReducer, {stageJsFilesVersionInitialState} from './stage-js-files-version.js';
 import throttle from 'redux-throttle';
 
 import decks from '../lib/libraries/decks/index.jsx';
@@ -46,6 +47,7 @@ const guiInitialState = {
     customProcedures: customProceduresInitialState,
     editorTab: editorTabInitialState,
     stageTab: stageTabInitialState,
+    stageJsFilesVersion: stageJsFilesVersionInitialState,
     mode: modeInitialState,
     hoveredTarget: hoveredTargetInitialState,
     stageSize: stageSizeInitialState,
@@ -152,6 +154,7 @@ const guiReducer = combineReducers({
     mode: modeReducer,
     hoveredTarget: hoveredTargetReducer,
     stageSize: stageSizeReducer,
+    stageJsFilesVersion: stageJsFilesVersionReducer,
     menus: menuReducer,
     micIndicator: micIndicatorReducer,
     modals: modalReducer,

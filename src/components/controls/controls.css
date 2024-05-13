@@ -1,3 +1,11 @@
+@import "../../css/colors.css";
+
+.button {
+    background: $data-primary;
+    margin-left: 0.375rem;
+    margin-right: 0.375rem;
+}
+
 .controls-container {
     display: flex;
 }

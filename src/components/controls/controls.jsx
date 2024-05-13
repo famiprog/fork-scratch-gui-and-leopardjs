@@ -8,6 +8,8 @@ import StopAll from '../stop-all/stop-all.jsx';
 import TurboMode from '../turbo-mode/turbo-mode.jsx';
 
 import styles from './controls.css';
+import Box from '../box/box.jsx';
+import Button from '../button/button.jsx';
 
 const messages = defineMessages({
     goTitle: {
@@ -29,6 +31,8 @@ const Controls = function (props) {
         intl,
         onGreenFlagClick,
         onStopAllClick,
+        onGenerateJSProject,
+        onReloadJSProject,
         turbo,
         ...componentProps
     } = props;
@@ -50,6 +54,19 @@ const Controls = function (props) {
             {turbo ? (
                 <TurboMode />
             ) : null}
+            
+                <Button
+                    className={styles.button}
+                    onClick={onGenerateJSProject}
+                >
+                    Generate JS
+                </Button>
+                <Button
+                    className={styles.button}
+                    onClick={onReloadJSProject}
+                >
+                    Load JS
+                </Button>
         </div>
     );
 };
@@ -60,6 +77,8 @@ Controls.propTypes = {
     intl: intlShape.isRequired,
     onGreenFlagClick: PropTypes.func.isRequired,
     onStopAllClick: PropTypes.func.isRequired,
+    onGenerateJSProject: PropTypes.func.isRequired,
+    onReloadJSProject: PropTypes.func.isRequired,
     turbo: PropTypes.bool
 };
 

@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types';
 import bindAll from 'lodash.bindall';
 import React from 'react';
 import {injectIntl} from 'react-intl';
@@ -11,6 +12,9 @@ import styles from './stage-js.css';
 import {getStageDimensions} from '../../lib/screen-utils';
 import Box from '../box/box.jsx';
 import { Console } from 'minilog';
+import classNames from 'classnames';
+import {STAGE_DISPLAY_SIZES} from '../../lib/layout-constants.js';
+import { updateStageJsFilesVersion } from '../../reducers/stage-js-files-version.js';
 
 const TRUSTED_ORIGINS_PATTERNS = [
     // In development, the address (of the webview of the vscode extension) looks like: 
@@ -25,11 +29,6 @@ class StageJSComponent extends React.Component {
     
     constructor (props) {
         super(props);
-
-        bindAll(this, [
-            'generateJsProject',
-            'reloadIFrame',
-        ]);
         this.state = {};
 
         if (window.parent == window) {
@@ -91,7 +90,7 @@ class StageJSComponent extends React.Component {
                     });
                     break;
                 case 'saveLeopardFilesResponse':
-                    this.reloadIFrame();
+                    props.onReloadJsProject();
                     break;
             }
         });
@@ -141,57 +140,6 @@ class StageJSComponent extends React.Component {
         // For the response handler: @see constructor()
     }
 
-    generateJsProject () {
-        this.props.saveProjectSb3().then(async content => {
-            const project = await Project.fromSb3(content);
-            const files = project.toLeopard(
-                {
-                    printWidth: 100,
-                    tabWidth: 2,
-                    htmlWhitespaceSensitivity: 'strict'
-                },
-                {
-                    plugins: [parserBabel, parserHtml],
-                    tabWidth: 2
-                }
-            );
-
-            // The files contains only the js files. Add also the assets files
-            for (const costume of project.stage.costumes) {
-                files[`./Stage/costumes/${costume.name}.${costume.ext}`] = costume.asset;
-            }
-
-            for (const sprite of project.sprites) {
-                for (const costume of sprite.costumes) {
-                    files[`./${sprite.name}/costumes/${costume.name}.${costume.ext}`] = costume.asset;
-                }
-            }
-
-            for (const sound of project.stage.sounds) {
-                files[`./Stage/sounds/${sound.name}.${sound.ext}`] = sound.asset;
-            }
-
-            for (const sprite of project.sprites) {
-                for (const sound of sprite.sounds) {
-                    files[`./${sprite.name}/sounds/${sound.name}.${sound.ext}`] = sound.asset;
-                }
-            }
-
-            this.saveLeopardFilesToVscode(files);
-        });
-    }
-
-    saveLeopardFilesToVscode (files) {
-        window.parent.postMessage(
-            {
-                type: 'saveLeopardFiles', 
-                body: files
-            },
-            // TODO DB: Maybe we should specify a more specific targetOrigin
-            '*' 
-        );
-    }
-
     loadScratchFileFromVscode() {
         window.parent.postMessage(
             {type: 'loadScratchFile'},
@@ -200,54 +148,55 @@ class StageJSComponent extends React.Component {
         );
     }
 
-    reloadIFrame() {
-        this.setState({
-            // This is needed to force the iframe to reload its content
-            iframeKey: (this.state.iframeKey === undefined) ? 0 : this.state.iframeKey + 1
-        });
-    }
-
     render () {
-        const stageDimensions = getStageDimensions(this.props.stageSize, this.props.isFullScreen);
-        return (<Box
-            className={styles.stageWrapper}
-            style={{
-                height: stageDimensions.height,
-                width: stageDimensions.width
-            }}
-        >
-            <Box className={styles.buttonsWrapper}>
-                <Button
-                    className={styles.button}
-                    onClick={this.generateJsProject}
-                >
-                    Generate JS
-                </Button>
-                <Button
-                    className={styles.button}
-                    onClick={this.reloadIFrame}
-                >
-                    Load JS
-                </Button>
-            </Box>
+        const {
+            isFullScreen,
+            stageSize,
+            jsFilesVersions
+        } = this.props;
 
-            <iframe
-                key={this.state.iframeKey}
-                className={styles.iframe}
-                src={`http://localhost:8601/leopard/index.html?parentAppClientId=${this.state.clientId}`}
-            />
-        </Box>);
+        const stageDimensions = getStageDimensions(stageSize, isFullScreen);
+        return (
+            <Box className={styles.stageWrapper}>
+                <Box
+                    className={classNames(styles.stage, {
+                        [styles.fullScreen]: isFullScreen,
+                    })}
+                >
+                    <iframe
+                        style={{
+                            height: stageDimensions.height,
+                            width: stageDimensions.width,
+                            border: 0
+                        }}
+                        key={jsFilesVersions}
+                        src={`http://localhost:8601/leopard/index.html?parentAppClientId=${this.state.clientId}`}
+                    />
+                </Box>
+            </Box>
+        );
     }
 }
+
+StageJSComponent.propTypes = {
+    isFullScreen: PropTypes.bool.isRequired,
+    stageSize: PropTypes.oneOf(Object.keys(STAGE_DISPLAY_SIZES)).isRequired
+};
 
 const mapStateToProps = state => ({
     projectChanged: state.scratchGui.projectChanged,
     loadingState: state.scratchGui.projectState.loadingState,
     saveProjectSb3: state.scratchGui.vm.saveProjectSb3.bind(state.scratchGui.vm),
-    vm: state.scratchGui.vm
+    vm: state.scratchGui.vm,
+    isFullScreen: state.scratchGui.mode.isFullScreen,
+    jsFilesVersions: state.scratchGui.stageJsFilesVersion
+});
+
+const mapDispatchToProps = (dispatch) => ({
+    onReloadJsProject: () => dispatch(updateStageJsFilesVersion())
 });
 
 export default injectIntl(connect(
-    mapStateToProps
+    mapStateToProps, mapDispatchToProps
 )(StageJSComponent));
 
