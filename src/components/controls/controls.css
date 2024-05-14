@@ -9,3 +9,17 @@
 .controls-container {
     display: flex;
 }
+
+.icon {
+    width: 2rem;
+    height: 2rem;
+    padding: 0.20rem;
+    border-radius: 0.25rem;
+    user-select: none;
+    user-drag: none;
+    cursor: pointer;
+}
+
+.icon:hover {
+    background-color: $looks-light-transparent;
+}

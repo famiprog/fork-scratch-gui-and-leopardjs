@@ -180,7 +180,8 @@ class StageJSComponent extends React.Component {
 
 StageJSComponent.propTypes = {
     isFullScreen: PropTypes.bool.isRequired,
-    stageSize: PropTypes.oneOf(Object.keys(STAGE_DISPLAY_SIZES)).isRequired
+    stageSize: PropTypes.oneOf(Object.keys(STAGE_DISPLAY_SIZES)).isRequired,
+    saveProjectSb3: PropTypes.func
 };
 
 const mapStateToProps = state => ({

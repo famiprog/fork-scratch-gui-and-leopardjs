@@ -19,6 +19,7 @@ import { connect } from 'react-redux';
 import scratchCatIcon from './icon--scratch-cat.svg';
 import javascriptIcon from './icon--javascript.svg';
 import StageJSComponent from '../stage-js/stage-js.jsx'
+import { style } from 'scratch-storage';
 
 const StageWrapperComponent = function (props) {
     const {
@@ -42,7 +43,6 @@ const StageWrapperComponent = function (props) {
     };
 
     const [activeTab, setActiveTab] = useState(1);
-
     return (
         <Box
             className={classNames(
@@ -73,24 +73,24 @@ const StageWrapperComponent = function (props) {
                 }}
             >
                 <TabList className={tabClassNames.tabList}>
-                    <Tab className={tabClassNames.tab}>
+                    <Tab className={classNames(tabClassNames.tab, styles.tab)}>
                         <img
                             draggable={false}
                             src={scratchCatIcon}
                         />
                         <FormattedMessage
-                            defaultMessage="Scratch renderer"
+                            defaultMessage="Scratch"
                             description="Button to get to the code panel"
                             id="gui.stageWrapper.scratchTab"
                         />
                     </Tab>
-                    <Tab className={tabClassNames.tab}>
+                    <Tab className={classNames(tabClassNames.tab, styles.tab)}>
                         <img
                             draggable={false}
                             src={javascriptIcon}
                         />
                         <FormattedMessage
-                            defaultMessage="Leopard renderer"
+                            defaultMessage="Leopard"
                             description="Button to get to the leopard renderer panel"
                             id="gui.stageWrapper.jsTab"
                         />

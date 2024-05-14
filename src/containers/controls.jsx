@@ -9,6 +9,7 @@ import { updateStageJsFilesVersion } from '../reducers/stage-js-files-version.js
 import { Project } from 'sb-edit';
 import parserBabel from 'prettier/parser-babel.js';
 import parserHtml from 'prettier/parser-html.js';
+import { STAGE_DISPLAY_SIZES } from '../lib/layout-constants.js';
 
 class Controls extends React.Component {
     constructor (props) {
@@ -41,7 +42,7 @@ class Controls extends React.Component {
             const project = await Project.fromSb3(content);
             const files = project.toLeopard(
                 {
-                    includeGreenFlag: false
+                    includeGreenFlag: false,
                 },
                 {
                     printWidth: 100,
@@ -96,6 +97,7 @@ class Controls extends React.Component {
             isStarted, // eslint-disable-line no-unused-vars
             projectRunning,
             turbo,
+            saveProjectSb3,
             ...props
         } = this.props;
         return (
@@ -116,7 +118,10 @@ Controls.propTypes = {
     isStarted: PropTypes.bool.isRequired,
     projectRunning: PropTypes.bool.isRequired,
     turbo: PropTypes.bool.isRequired,
-    vm: PropTypes.instanceOf(VM)
+    vm: PropTypes.instanceOf(VM),
+    isFullScreen: PropTypes.bool.isRequired,
+    stageSize: PropTypes.oneOf(Object.keys(STAGE_DISPLAY_SIZES)).isRequired,
+    saveProjectSb3: PropTypes.func
 };
 
 const mapStateToProps = state => ({
@@ -124,6 +129,8 @@ const mapStateToProps = state => ({
     projectRunning: state.scratchGui.vmStatus.running,
     turbo: state.scratchGui.vmStatus.turbo,
     saveProjectSb3: state.scratchGui.vm.saveProjectSb3.bind(state.scratchGui.vm),
+    isFullScreen: state.scratchGui.mode.isFullScreen,
+    stageSize: state.scratchGui.stageSize.stageSize,
 });
 
 const mapDispatchToProps = (dispatch) => ({
