@@ -10,7 +10,9 @@ import { Project } from 'sb-edit';
 import parserBabel from 'prettier/parser-babel.js';
 import parserHtml from 'prettier/parser-html.js';
 import { STAGE_DISPLAY_SIZES } from '../lib/layout-constants.js';
+import { addVSCodeMessageEventListener } from '../components/stage-js/stage-js.jsx';
 
+const CUSTOM_INDEX_FILE_PATH = "../leopard_ext/index.js";
 class Controls extends React.Component {
     constructor (props) {
         super(props);
@@ -36,45 +38,63 @@ class Controls extends React.Component {
         e.preventDefault();
         this.props.vm.stopAll();
     }
-
+    
     handleGenerateJSProject() {
-        this.props.saveProjectSb3().then(async content => {
-            const project = await Project.fromSb3(content);
-            const files = project.toLeopard(
-                {
-                    includeGreenFlag: false,
-                },
-                {
-                    printWidth: 100,
-                    tabWidth: 2,
-                    htmlWhitespaceSensitivity: 'strict',
-                    plugins: [parserBabel, parserHtml],
-                }
-            );
+        addVSCodeMessageEventListener(event => {
+            const { type, body } = event.data;
+            switch (type) {
+                case 'checkCustomIndexFileExistsResponse':
+                    this.props.saveProjectSb3().then(async content => {
 
-            // The files contains only the js files. Add also the assets files
-            for (const costume of project.stage.costumes) {
-                files[`./Stage/costumes/${costume.name}.${costume.ext}`] = costume.asset;
+                        const project = await Project.fromSb3(content);
+                        const files = project.toLeopard(
+                            {
+                                includeGreenFlag: false,
+                                ...(body ? {indexURL: CUSTOM_INDEX_FILE_PATH} : {})
+                            },
+                            {
+                                printWidth: 100,
+                                tabWidth: 2,
+                                htmlWhitespaceSensitivity: 'strict',
+                                plugins: [parserBabel, parserHtml],
+                            }
+                        );
+            
+                        // The files contains only the js files. Add also the assets files
+                        for (const costume of project.stage.costumes) {
+                            files[`./Stage/costumes/${costume.name}.${costume.ext}`] = costume.asset;
+                        }
+            
+                        for (const sprite of project.sprites) {
+                            for (const costume of sprite.costumes) {
+                                files[`./${sprite.name}/costumes/${costume.name}.${costume.ext}`] = costume.asset;
+                            }
+                        }
+            
+                        for (const sound of project.stage.sounds) {
+                            files[`./Stage/sounds/${sound.name}.${sound.ext}`] = sound.asset;
+                        }
+            
+                        for (const sprite of project.sprites) {
+                            for (const sound of sprite.sounds) {
+                                files[`./${sprite.name}/sounds/${sound.name}.${sound.ext}`] = sound.asset;
+                            }
+                        }
+            
+                        this.saveLeopardFilesToVscode(files);
+                    });
+                    
+                    break;
             }
+        }, true);
 
-            for (const sprite of project.sprites) {
-                for (const costume of sprite.costumes) {
-                    files[`./${sprite.name}/costumes/${costume.name}.${costume.ext}`] = costume.asset;
-                }
-            }
-
-            for (const sound of project.stage.sounds) {
-                files[`./Stage/sounds/${sound.name}.${sound.ext}`] = sound.asset;
-            }
-
-            for (const sprite of project.sprites) {
-                for (const sound of sprite.sounds) {
-                    files[`./${sprite.name}/sounds/${sound.name}.${sound.ext}`] = sound.asset;
-                }
-            }
-
-            this.saveLeopardFilesToVscode(files);
-        });
+        window.parent.postMessage(
+            {
+                type: 'checkCustomIndexFileExists'
+            },
+            // TODO DB: Maybe we should specify a more specific targetOrigin
+            '*' 
+        );
     }
     saveLeopardFilesToVscode (files) {
         window.parent.postMessage(

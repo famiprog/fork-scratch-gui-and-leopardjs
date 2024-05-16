@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Disposable, disposeAll } from './dispose';
 
 const LEOPARD_FOLDER = "leopard";
+const CUSTOM_INDEX_FILE_PATH = "leopard_ext/index.js";
 
 interface ScratchDocumentDelegate {
 	getFileData(): Promise<any>;
@@ -305,7 +306,7 @@ export class ScratchEditorProvider implements vscode.CustomEditorProvider<Scratc
 		panel.webview.postMessage({ type, body });
 	}
 
-	private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewPanel, message: any) {
+private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewPanel, message: any) {
 		switch (message.type) {
 			// Equivalent to `init` from the `custom-editor-sample/pawEditorDraw`
 			case 'loadScratchFile':
@@ -340,6 +341,14 @@ export class ScratchEditorProvider implements vscode.CustomEditorProvider<Scratc
 			case 'scratchContentChanged':
 				document.makeEdit();
                 break;
+			case `checkCustomIndexFileExists`:
+				try {
+					const stat = await vscode.workspace.fs.stat(vscode.Uri.joinPath(getParentFolder(document.uri), CUSTOM_INDEX_FILE_PATH));
+					webviewPanel.webview.postMessage({type: "checkCustomIndexFileExistsResponse", body: true});
+				} catch (error) {
+					webviewPanel.webview.postMessage({type: "checkCustomIndexFileExistsResponse", body: false});
+				}
+				break;	
 
 			case 'response':
 				{
@@ -403,8 +412,10 @@ async function deleteFolderRecursively(uri:vscode.Uri) {
 			for (const [name, type] of files) {
 				const fileUri = vscode.Uri.joinPath(uri, name);
 				if (type === vscode.FileType.Directory) {
+					console.log("********delete folder recursivly" + fileUri);
 					await deleteFolderRecursively(fileUri);
 				}
+				console.log("********delete file" + fileUri);
 				await vscode.workspace.fs.delete(fileUri);
 			}
 		}

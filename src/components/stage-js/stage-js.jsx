@@ -16,7 +16,7 @@ import classNames from 'classnames';
 import {STAGE_DISPLAY_SIZES} from '../../lib/layout-constants.js';
 import { updateStageJsFilesVersion } from '../../reducers/stage-js-files-version.js';
 
-const TRUSTED_ORIGINS_PATTERNS = [
+export const VSCODE_ORIGINS_PATTERNS = [
     // In development, the address (of the webview of the vscode extension) looks like: 
     // http://12q9ut155tm2e1m5qvsri5pjgd6o913mctten638icadgb6o58bq.localhost:3000.
     // So it contains a dynamic generated part. That's why we need to use regexp
@@ -25,25 +25,34 @@ const TRUSTED_ORIGINS_PATTERNS = [
     // Add more trusted origins for production 
 ];
 
+export function addVSCodeMessageEventListener(eventListener, oneTimeOnly) {
+    if (window.parent == window) {
+        throw new Error("This app should be embeded inside a vscode editor");
+    }
+
+    let eventListenerWrapper = event => {
+        var isTrusted = VSCODE_ORIGINS_PATTERNS.some(function(origin) {
+            return origin.test(event.origin);
+        });
+        if (!isTrusted) {
+            return;
+        }
+        eventListener(event);
+        if (oneTimeOnly) {
+            window.removeEventListener('message', eventListenerWrapper);
+        }
+    };
+
+    window.addEventListener('message', eventListenerWrapper);
+}
 class StageJSComponent extends React.Component {
     
     constructor (props) {
         super(props);
         this.state = {};
 
-        if (window.parent == window) {
-            throw new Error("This app should be embeded inside a vscode editor");
-        }
-        
         //TODO DB: add an "update" event listener when the file is modified from another editor
-        window.addEventListener('message', event => {
-            var isTrusted = TRUSTED_ORIGINS_PATTERNS.some(function(origin) {
-                return origin.test(event.origin);
-            });
-            if (!isTrusted) {
-                return;
-            }
-
+        addVSCodeMessageEventListener(event => {
             const { type, body, requestId } = event.data;
             switch (type) {
                 case 'loadScratchFileResponse':
@@ -92,8 +101,12 @@ class StageJSComponent extends React.Component {
                 case 'saveLeopardFilesResponse':
                     props.onReloadJsProject();
                     break;
-            }
-        });
+                }
+            })
+
+        if (window.parent == window) {
+            throw new Error("This app should be embeded inside a vscode editor");
+        }
     }
 
     componentDidMount() {
