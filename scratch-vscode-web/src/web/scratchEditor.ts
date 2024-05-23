@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Disposable, disposeAll } from './dispose';
+import { endPerformanceLogging, logScratchMessage, startPerformanceLogging } from './extension';
 
 const LEOPARD_FOLDER = "leopard";
 const CUSTOM_INDEX_FILE_PATH = "leopard_ext/index.js";
@@ -307,6 +308,7 @@ export class ScratchEditorProvider implements vscode.CustomEditorProvider<Scratc
 	}
 
 private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewPanel, message: any) {
+		let start, duration;
 		switch (message.type) {
 			// Equivalent to `init` from the `custom-editor-sample/pawEditorDraw`
 			case 'loadScratchFile':
@@ -317,7 +319,13 @@ private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewP
 				const fileUri = vscode.Uri.joinPath(getParentFolder(document.uri), message.body);
 				const baseResponse =  {type: "getFileResponse", requestUId: message.requestUId};
 				try {
+					start = performance.now();
+
 					const fileContent = await vscode.workspace.fs.readFile(fileUri);
+
+					duration = performance.now() - start; 
+					logScratchMessage(`Read file ${fileUri} took: ${duration} miliseconds`);
+
 					webviewPanel.webview.postMessage({...baseResponse, fileContent});
 					break;
 				} catch (error) {
@@ -327,13 +335,27 @@ private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewP
 				break;
 
 			case 'saveLeopardFiles':
+				start = performance.now();
 				const leopardFolderUri = vscode.Uri.joinPath(getParentFolder(document.uri), LEOPARD_FOLDER);
-				// Additional save also the associated leopard files (in a "leopard" folder placed besides the .sb3 file) 
-				await deleteFolderRecursively(leopardFolderUri);
-				for (const [url, content] of Object.entries(message.body)) {
-					await writeFile(url.replace("./", ""), leopardFolderUri,  content as Uint8Array|ArrayBuffer|String);
+				try {
+					await vscode.workspace.fs.delete(leopardFolderUri, {recursive: true});
+				} catch (error) {
+					console.info(`Folder leopard does not exist. Nothing to delete`);
 				}
-		
+				duration = performance.now() - start; 
+				logScratchMessage(`Delete files took: ${duration} miliseconds`);
+
+				start = performance.now();
+				let promissesArray = [];
+				for (const [receivedUrl, content] of Object.entries(message.body)) {
+					let fileName = receivedUrl.replace("./", "");
+					promissesArray.push(writeFile(fileName, leopardFolderUri,  content as Uint8Array|ArrayBuffer|String));
+				}
+
+				await Promise.all(promissesArray);
+				duration = performance.now() - start; 
+				logScratchMessage(`Save all ${Object.entries(message.body).length} files took: ${duration} miliseconds`);
+
 				vscode.commands.executeCommand('workbench.files.action.refreshFilesExplorer');
 				webviewPanel.webview.postMessage({type: "saveLeopardFilesResponse"});	
 				break;
@@ -343,7 +365,7 @@ private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewP
                 break;
 			case `checkCustomIndexFileExists`:
 				try {
-					const stat = await vscode.workspace.fs.stat(vscode.Uri.joinPath(getParentFolder(document.uri), CUSTOM_INDEX_FILE_PATH));
+					await vscode.workspace.fs.stat(vscode.Uri.joinPath(getParentFolder(document.uri), CUSTOM_INDEX_FILE_PATH));
 					webviewPanel.webview.postMessage({type: "checkCustomIndexFileExistsResponse", body: true});
 				} catch (error) {
 					webviewPanel.webview.postMessage({type: "checkCustomIndexFileExistsResponse", body: false});
@@ -400,33 +422,14 @@ function getParentFolder(uri: vscode.Uri):vscode.Uri {
     return vscode.Uri.joinPath(uri, '..');
 }
 
-async function deleteFolderRecursively(uri:vscode.Uri) {
-	try {
-		// Check if the folder exists
-		const folderExists = await vscode.workspace.fs.stat(uri).then(stats => stats.type === vscode.FileType.Directory, () => false);
-		if (folderExists) {
-			// Get list of files in the folder
-			const files = await vscode.workspace.fs.readDirectory(uri);
-
-			// Delete each file in the folder and empty child folders recursively
-			for (const [name, type] of files) {
-				const fileUri = vscode.Uri.joinPath(uri, name);
-				if (type === vscode.FileType.Directory) {
-					console.log("********delete folder recursivly" + fileUri);
-					await deleteFolderRecursively(fileUri);
-				}
-				console.log("********delete file" + fileUri);
-				await vscode.workspace.fs.delete(fileUri);
-			}
-		}
-	} catch (error: any) {
-		vscode.window.showErrorMessage(`Error: ${error.message}`);
-	}
-}
-
 async function writeFile(fileName: string, parentURI: vscode.Uri, content:Uint8Array|ArrayBuffer|String) {
+	
 	content = (typeof content === 'string') ? new TextEncoder().encode(content) : new Uint8Array(content as Uint8Array|ArrayBuffer)
+	let start1 = performance.now();
 	await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(parentURI, fileName), content as Uint8Array);
+	
+	let duration1 = performance.now() - start1; 
+	logScratchMessage(`Save file ${vscode.Uri.joinPath(parentURI, fileName)} with size: ${content.byteLength} bytes took: ${Math.round(duration1)} miliseconds`);
 }
 
 function getNonce() {
