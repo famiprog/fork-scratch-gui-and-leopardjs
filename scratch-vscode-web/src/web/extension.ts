@@ -31,7 +31,23 @@ export function deactivate() {
 
 export function logScratchMessage(message: string) {
 	if (isLoggingEnabled && scratchChannel) {
-		const timestamp = Date.now();
-		scratchChannel.appendLine(`[${timestamp}] ${message}`);
+		scratchChannel.appendLine(`[${formattedDateForLogs(new Date())}] ${message}`);
 	}
+}
+
+function formattedDateForLogs(date: Date) {
+    let options: Intl.DateTimeFormatOptions = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    };
+
+    let formattedDate = new Intl.DateTimeFormat('en-GB', options).format(date);
+
+    let milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+    return formattedDate.replace(',', '') + '.' + milliseconds;
 }

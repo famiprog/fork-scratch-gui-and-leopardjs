@@ -44,6 +44,7 @@ class Controls extends React.Component {
             const { type, body } = event.data;
             switch (type) {
                 case 'checkCustomIndexFileExistsResponse':
+                    let start = performance.now();
                     this.props.saveProjectSb3().then(async content => {
 
                         const project = await Project.fromSb3(content);
@@ -81,7 +82,8 @@ class Controls extends React.Component {
                             }
                         }
             
-                        this.saveLeopardFilesToVscode(files);
+                       	let duration = performance.now() - start;
+                        this.saveLeopardFilesToVscode(files, duration);
                     });
                     
                     break;
@@ -96,10 +98,11 @@ class Controls extends React.Component {
             '*' 
         );
     }
-    saveLeopardFilesToVscode (files) {
+    saveLeopardFilesToVscode (files, sb3ToJsDuration) {
         window.parent.postMessage(
             {
                 type: 'saveLeopardFiles', 
+                sb3ToJsDuration: sb3ToJsDuration,
                 body: files
             },
             // TODO DB: Maybe we should specify a more specific targetOrigin

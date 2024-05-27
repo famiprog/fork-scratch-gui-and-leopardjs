@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Disposable, disposeAll } from './dispose';
-import { endPerformanceLogging, logScratchMessage, startPerformanceLogging } from './extension';
+import { logScratchMessage } from './extension';
 
 const LEOPARD_FOLDER = "leopard";
 const CUSTOM_INDEX_FILE_PATH = "leopard_ext/index.js";
@@ -183,7 +183,6 @@ export class ScratchEditorProvider implements vscode.CustomEditorProvider<Scratc
 	/**
 	 * Tracks all known webviews
 	 */
-    // TODO DB: why we need this because above we have supportsMultipleEditorsPerDocument:false
 	private readonly webviews = new WebviewCollection();
 
 	constructor(
@@ -324,7 +323,7 @@ private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewP
 					const fileContent = await vscode.workspace.fs.readFile(fileUri);
 
 					duration = performance.now() - start; 
-					logScratchMessage(`Read file ${fileUri} took: ${duration} miliseconds`);
+					logScratchMessage(`Read file ${fileUri} took: ${duration} milliseconds`);
 
 					webviewPanel.webview.postMessage({...baseResponse, fileContent});
 					break;
@@ -335,15 +334,18 @@ private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewP
 				break;
 
 			case 'saveLeopardFiles':
-				start = performance.now();
 				const leopardFolderUri = vscode.Uri.joinPath(getParentFolder(document.uri), LEOPARD_FOLDER);
+				logScratchMessage(`Generation of js files took: ${message.sb3ToJsDuration} milliseconds`)
 				try {
-					await vscode.workspace.fs.delete(leopardFolderUri, {recursive: true});
+					start = performance.now();
+					// await vscode.workspace.fs.delete(leopardFolderUri, {recursive: true});
+					var [deletedFoldersCount, deletedFilesCount] = await emptyFolderRecursively(leopardFolderUri);
+					duration = performance.now() - start; 
+					logScratchMessage(`Delete all files, (${deletedFoldersCount} folders and ${deletedFilesCount} files) took: ${duration} milliseconds`);
+					// logScratchMessage(`Delete all files took: ${duration} milliseconds`);
 				} catch (error) {
 					console.info(`Folder leopard does not exist. Nothing to delete`);
 				}
-				duration = performance.now() - start; 
-				logScratchMessage(`Delete files took: ${duration} miliseconds`);
 
 				start = performance.now();
 				let promissesArray = [];
@@ -354,7 +356,7 @@ private async onMessage(document: ScratchDocument, webviewPanel: vscode.WebviewP
 
 				await Promise.all(promissesArray);
 				duration = performance.now() - start; 
-				logScratchMessage(`Save all ${Object.entries(message.body).length} files took: ${duration} miliseconds`);
+				logScratchMessage(`Save all ${Object.entries(message.body).length} files took: ${duration} milliseconds`);
 
 				vscode.commands.executeCommand('workbench.files.action.refreshFilesExplorer');
 				webviewPanel.webview.postMessage({type: "saveLeopardFilesResponse"});	
@@ -422,14 +424,73 @@ function getParentFolder(uri: vscode.Uri):vscode.Uri {
     return vscode.Uri.joinPath(uri, '..');
 }
 
+async function emptyFolderRecursively(uri:vscode.Uri, level = 0): Promise<[number, number]> {
+	try {
+		let deletedFoldersCount = 0, deletedFilesCount = 0;
+		// Check if the folder exists
+		const folderExists = await vscode.workspace.fs.stat(uri).then(stats => stats.type === vscode.FileType.Directory, () => false);
+		if (folderExists) {
+			// Get list of files in the folder
+			const files = await vscode.workspace.fs.readDirectory(uri);
+
+			let promissesArray: Promise<number[]>[] = [];
+			// Delete each file in the folder and empty child folders recursively
+			for (const [name, type] of files) {
+				let start = performance.now();
+				const fileUri = vscode.Uri.joinPath(uri, name);
+				if (type === vscode.FileType.Directory) {
+					/************SEQUENTIAL**************/
+					// let [deletedFoldersRecursivelyCount, deletedFilesRecursivelyCount] = await emptyFolderRecursively(fileUri, level + 1);
+					// deletedFoldersCount += deletedFoldersRecursivelyCount;
+					// deletedFilesCount += deletedFilesRecursivelyCount;
+					// deletedFoldersCount++;
+					/************************************/
+
+					/*****************PARALLEL***********/
+					promissesArray.push(emptyFolderRecursively(fileUri, level + 1).then(async ([deletedFoldersRecursivelyCount, deletedFilesRecursivelyCount]) => {
+						await vscode.workspace.fs.delete(fileUri);
+						return [deletedFoldersRecursivelyCount + 1, deletedFilesRecursivelyCount];
+					}));
+					/*************************************/
+				} else {
+					/************SEQUENTIAL**************/
+					// deletedFilesCount++;
+					/************************************/
+					/***************PARALLEL*************/
+					promissesArray.push(async function(): Promise<number[]> {
+						await vscode.workspace.fs.delete(fileUri);
+						return [0, 1];
+					}());
+					/***********************************/
+				}
+				/****************SEQUENTIAL**************/
+				// await vscode.workspace.fs.delete(fileUri);
+				// if (type === vscode.FileType.Directory && level == 0) { 
+				// 	let duration = performance.now() - start;
+				// 	logScratchMessage(`Delete folder ${fileUri} took: ${duration} milliseconds`);
+				// }
+				/***************************************/
+			}
+			/***************PARALLEL*************/
+			await Promise.all(promissesArray).then(results => {
+				[deletedFoldersCount, deletedFilesCount] = results.reduce((acc, value) => [acc[0] + value[0], acc[1] + value[1]], [0, 0]);
+			});
+			/***************************************/
+		}
+		return [deletedFoldersCount, deletedFilesCount];
+	} catch (error: any) {
+		vscode.window.showErrorMessage(`Error: ${error.message}`);
+		throw(error);
+	}
+}
+
 async function writeFile(fileName: string, parentURI: vscode.Uri, content:Uint8Array|ArrayBuffer|String) {
-	
-	content = (typeof content === 'string') ? new TextEncoder().encode(content) : new Uint8Array(content as Uint8Array|ArrayBuffer)
-	let start1 = performance.now();
+	let start = performance.now();
+	content = (typeof content === 'string') ? new TextEncoder().encode(content) : new Uint8Array(content as Uint8Array|ArrayBuffer);
 	await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(parentURI, fileName), content as Uint8Array);
 	
-	let duration1 = performance.now() - start1; 
-	logScratchMessage(`Save file ${vscode.Uri.joinPath(parentURI, fileName)} with size: ${content.byteLength} bytes took: ${Math.round(duration1)} miliseconds`);
+	let duration = performance.now() - start; 
+	logScratchMessage(`Save file ${vscode.Uri.joinPath(parentURI, fileName)} with size: ${content.byteLength} bytes took: ${Math.round(duration)} milliseconds`);
 }
 
 function getNonce() {
