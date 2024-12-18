@@ -10,19 +10,19 @@
     "Other"
   ],
   "browser": "./dist/web/extension.js",
-  "contributes": 
-    {"customEditors": [
-			{
-				"viewType": "scratch-vs-code-web.scratch-editor",
-				"displayName": "Scratch + Leopard",
-				"selector": [
-					{
-						"filenamePattern": "*.sb3"
-					}
-				]
-			}
-		]
-	},
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "scratch-vs-code-web.scratch-editor",
+        "displayName": "Scratch + Leopard",
+        "selector": [
+          {
+            "filenamePattern": "*.sb3"
+          }
+        ]
+      }
+    ]
+  },
   "capabilities": {
     "virtualWorkspaces": true
   },
@@ -43,7 +43,7 @@
     "@types/webpack-env": "^1.18.4",
     "@typescript-eslint/eslint-plugin": "^7.0.2",
     "@typescript-eslint/parser": "^7.0.2",
-    "@vscode/test-web": "^0.0.52",
+    "@vscode/test-web": "^0.0.65",
     "assert": "^2.1.0",
     "eslint": "^8.56.0",
     "mocha": "^10.3.0",
