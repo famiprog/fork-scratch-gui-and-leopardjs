@@ -94,6 +94,13 @@ const baseConfig = new ScratchWebpackConfigBuilder(
         test: /\.hex$/,
         type: 'asset/resource'
     })
+    .addModuleRule({
+        test: /.tsx?$/,
+        exclude: /node_modules/,
+        use: [{
+            loader: 'ts-loader'
+        }]
+    })    
     .addPlugin(new webpack.ProvidePlugin({
         Buffer: ['buffer', 'Buffer']
     }))

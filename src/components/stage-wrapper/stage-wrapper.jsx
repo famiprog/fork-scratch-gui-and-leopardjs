@@ -19,7 +19,7 @@ import { connect } from 'react-redux';
 import scratchCatIcon from './icon--scratch-cat.svg';
 import javascriptIcon from './icon--javascript.svg';
 import StageJSComponent from '../stage-js/stage-js.jsx'
-import { style } from 'scratch-storage';
+import { StageWrapperComponentInject } from "../../famiprog/inject/components/stage-wrapper/stage-wrapper.tsx"
 
 const StageWrapperComponent = function (props) {
     const {
@@ -57,11 +57,24 @@ const StageWrapperComponent = function (props) {
                     vm={vm}
                 />
             </Box>
+            <StageWrapperComponentInject originalProps={props}>
+                <Box className={styles.stageCanvasWrapper}>
+                    {
+                        isRendererSupported ?
+                            <Stage
+                                stageSize={stageSize}
+                                vm={vm}
+                                isRendered={activeTab == 0}
+                            /> :
+                            null
+                    }
+                </Box>
+            </StageWrapperComponentInject>
             {/* TODO for now the activeTabIndex is not used.
             Check if I need this, and if not, why the tabs from the left side (code, costumes, sounds) needs it*/}
             {/* selectedIndex={activeTabIndex} */}
             {/* onSelect={onActivateStageTab} */}
-            <Tabs
+            {/* <Tabs
                 forceRenderTabPanel
                 className={tabClassNames.tabs}
                 defaultIndex={1}
@@ -114,7 +127,7 @@ const StageWrapperComponent = function (props) {
                         <StageJSComponent stageSize={stageSize}/>
                     </Box>
                 </TabPanel>
-            </Tabs>
+            </Tabs> */}
             {loading ? (
                 <Loader isFullScreen={isFullScreen} />
             ) : null}
