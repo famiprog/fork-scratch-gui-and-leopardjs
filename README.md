@@ -1,3 +1,22 @@
+# FamiProg changes
+
+Currently this project uses two additional forked projects:
+1. [fork-scratch-vm](https://github.com/famiprog/fork-scratch-vm)
+2. [fork-sb-edit](https://github.com/famiprog/fork-sb-edit)
+
+These forked projects are not currently publish as different projects (they are having the same id as the original projects).
+
+## Before start:
+1. Clone the above projects
+2. Run ```npm run build``` (or ```npm run watch``` if modifications will be made inside) on both
+3. Run ```yarn link``` on both 
+4. On the ```fork-scratch-gui-and-leopard``` run:
+   1. ```yarn link "sb-edit"```
+   2. ```yarn link "scratch-vm"```
+
+## Start the project
+Run ```yarn start-all```
+
 # scratch-gui
 
 Scratch GUI is a set of React components that comprise the interface for creating and running Scratch 3.0 projects

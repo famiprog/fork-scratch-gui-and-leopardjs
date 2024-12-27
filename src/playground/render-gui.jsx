@@ -61,6 +61,15 @@ export default appTarget => {
         window.onbeforeunload = () => true;
     }
 
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register('static/main-sw.js', { scope: '/' })
+            .catch(function(err){
+                console.log("Service worker registration failed: " + err);
+            })
+    } else {
+        console.log("Service worker absent");
+    }  
+     
     ReactDOM.render(
         // important: this is checking whether `simulateScratchDesktop` is truthy, not just defined!
         simulateScratchDesktop ?

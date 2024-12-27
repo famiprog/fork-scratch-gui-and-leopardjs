@@ -5,6 +5,7 @@ import makeToolboxXML from '../lib/make-toolbox-xml';
 import PropTypes from 'prop-types';
 import React from 'react';
 import VMScratchBlocks from '../lib/blocks';
+import VMScratchJavascriptCallBlocks from '../lib/blocks_javascript';
 import VM from 'scratch-vm';
 
 import log from '../lib/log.js';
@@ -52,6 +53,7 @@ class Blocks extends React.Component {
     constructor (props) {
         super(props);
         this.ScratchBlocks = VMScratchBlocks(props.vm, false);
+        this.JavascriptCallBlocks = VMScratchJavascriptCallBlocks(props.vm, false);
         bindAll(this, [
             'attachVM',
             'detachVM',
@@ -687,7 +689,7 @@ const mapStateToProps = state => ({
 
 const mapDispatchToProps = dispatch => ({
     onActivateColorPicker: callback => dispatch(activateColorPicker(callback)),
-    onActivateCustomProcedures: (data, callback) => dispatch(activateCustomProcedures(data, callback)),
+    onActivateCustomProcedures: (data, callback, isForJavascriptCall) => dispatch(activateCustomProcedures(data, callback, isForJavascriptCall)),
     onOpenConnectionModal: id => {
         dispatch(setConnectionModalExtensionId(id));
         dispatch(openConnectionModal());

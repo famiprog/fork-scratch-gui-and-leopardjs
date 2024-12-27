@@ -31,6 +31,7 @@ const baseConfig = new ScratchWebpackConfigBuilder(
         resolve: {
             fallback: {
                 Buffer: require.resolve('buffer/'),
+                "buffer": require.resolve('buffer/'),
                 stream: require.resolve('stream-browserify')
             }
         },
@@ -40,6 +41,17 @@ const baseConfig = new ScratchWebpackConfigBuilder(
             },
             mergeDuplicateChunks: true,
             runtimeChunk: 'single'
+        },
+        devServer: {
+            client: {
+                overlay: true,
+                progress: true
+            },
+            host: '0.0.0.0',
+            port: process.env.PORT || 8601,
+            headers: {
+                'Service-Worker-Allowed': '/',
+            },
         }
     })
     .addModuleRule({
@@ -133,7 +145,6 @@ const distConfig = baseConfig.clone()
 
 // build the examples and debugging tools in `build/`
 const buildConfig = baseConfig.clone()
-    .enableDevServer(process.env.PORT || 8602)
     .merge({
         entry: {
             gui: './src/playground/index.jsx',

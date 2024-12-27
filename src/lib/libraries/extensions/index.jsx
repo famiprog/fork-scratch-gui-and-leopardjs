@@ -46,6 +46,8 @@ import gdxforInsetIconURL from './gdxfor/gdxfor-small.svg';
 import gdxforConnectionIconURL from './gdxfor/gdxfor-illustration.svg';
 import gdxforConnectionSmallIconURL from './gdxfor/gdxfor-small.svg';
 
+import javascriptIconURL from './javascript/js.png';
+
 export default [
     {
         name: (
@@ -317,5 +319,25 @@ export default [
             />
         ),
         helpLink: 'https://scratch.mit.edu/vernier'
-    }
+    },
+    {
+        name: (
+            <FormattedMessage
+                defaultMessage="Javascript"
+                description="Name for 'Javascript' extension"
+                id="gui.extension.javascript.name"
+            />
+        ),
+        extensionId: 'javascript',
+        iconURL: javascriptIconURL,
+        insetIconURL: javascriptIconURL,
+        description: (
+            <FormattedMessage
+                defaultMessage="Javascript"
+                description="Description for the 'Javascript' extension"
+                id="gui.extension.javascript.description"
+            />
+        ),
+        featured: true
+    },
 ];
