@@ -1,11 +1,13 @@
 const ACTIVATE_CUSTOM_PROCEDURES = 'scratch-gui/custom-procedures/ACTIVATE_CUSTOM_PROCEDURES';
 const DEACTIVATE_CUSTOM_PROCEDURES = 'scratch-gui/custom-procedures/DEACTIVATE_CUSTOM_PROCEDURES';
 const SET_CALLBACK = 'scratch-gui/custom-procedures/SET_CALLBACK';
+const SET_IS_FOR_JAVASCRIPT_CALL = 'scratch-gui/custom-procedures/SET_FOR_JAVASCRIPT_CALL_FLAG';
 
 const initialState = {
     active: false,
     mutator: null,
-    callback: null
+    callback: null,
+    isForJavascriptCall: false,
 };
 
 const reducer = function (state, action) {
@@ -15,7 +17,8 @@ const reducer = function (state, action) {
         return Object.assign({}, state, {
             active: true,
             mutator: action.mutator,
-            callback: action.callback
+            callback: action.callback,
+            isForJavascriptCall: action.isForJavascriptCall
         });
     case DEACTIVATE_CUSTOM_PROCEDURES:
         // Can be called without a mutator to deactivate without new procedure
@@ -42,10 +45,11 @@ const reducer = function (state, action) {
  *     Expect the callback to be a function that takes a new XML mutator node.
  * @returns {object} An action object with type ACTIVATE_CUSTOM_PROCEDURES.
  */
-const activateCustomProcedures = (mutator, callback) => ({
+const activateCustomProcedures = (mutator, callback, isForJavascriptCall) => ({
     type: ACTIVATE_CUSTOM_PROCEDURES,
     mutator: mutator,
-    callback: callback
+    callback: callback,
+    isForJavascriptCall: isForJavascriptCall
 });
 
 /**

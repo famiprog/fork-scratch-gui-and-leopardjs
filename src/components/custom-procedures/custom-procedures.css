@@ -34,6 +34,10 @@
     background-color: $ui-primary;
 }
 
+.radio-inline {
+    margin-left: 10px;
+}
+
 /* Row of "card" buttons for modifying custom procedures */
 .options-row {
     display: flex;
@@ -73,6 +77,14 @@
 /* "Run without screen refresh" row */
 .checkbox-row {
     margin-top: 1rem;
+}
+
+.return-row {
+    margin-top: 1rem;
+}
+
+.return-label {
+    font-weight: bold;
 }
 
 /* Confirmation buttons at the bottom of the modal */

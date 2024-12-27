@@ -16,11 +16,13 @@ class CustomProcedures extends React.Component {
             'handleToggleWarp',
             'handleCancel',
             'handleOk',
-            'setBlocks'
+            'setBlocks',
+            'handleReturnTypeChange'
         ]);
         this.state = {
             rtlOffset: 0,
-            warp: false
+            warp: false,
+            returnType: ScratchBlocks.Procedures.RETURN_TYPE.STRING
         };
     }
     componentWillUnmount () {
@@ -44,7 +46,11 @@ class CustomProcedures extends React.Component {
         ScratchBlocks.Blocks.defaultToolbox = oldDefaultToolbox;
 
         // Create the procedure declaration block for editing the mutation.
-        this.mutationRoot = this.workspace.newBlock('procedures_declaration');
+        if (this.props.isForJavascriptCall) {
+            this.mutationRoot = this.workspace.newBlock('javascript_call_inputs');
+        } else {
+            this.mutationRoot = this.workspace.newBlock('procedures_declaration');
+        }
         // Make the declaration immovable, undeletable and have no context menu
         this.mutationRoot.setMovable(false);
         this.mutationRoot.setDeletable(false);
@@ -103,7 +109,12 @@ class CustomProcedures extends React.Component {
         this.mutationRoot.domToMutation(this.props.mutator);
         this.mutationRoot.initSvg();
         this.mutationRoot.render();
-        this.setState({warp: this.mutationRoot.getWarp()});
+        this.setState({
+            warp: this.mutationRoot.getWarp(),
+            ...(this.mutationRoot.getReturnType
+                ? { returnType: this.mutationRoot.getReturnType() }
+                : {}),
+        });
         // Allow the initial events to run to position this block, then focus.
         setTimeout(() => {
             this.mutationRoot.focusLastEditor_();
@@ -138,17 +149,27 @@ class CustomProcedures extends React.Component {
             this.setState({warp: newWarp});
         }
     }
+    handleReturnTypeChange(event) {
+        let newReturnType = event.target.value;
+        if (this.mutationRoot) {
+            this.mutationRoot.setReturnType(newReturnType);
+            this.setState({returnType: newReturnType});
+        }
+    }
     render () {
         return (
             <CustomProceduresComponent
                 componentRef={this.setBlocks}
                 warp={this.state.warp}
+                returnType={this.state.returnType}
                 onAddBoolean={this.handleAddBoolean}
                 onAddLabel={this.handleAddLabel}
                 onAddTextNumber={this.handleAddTextNumber}
                 onCancel={this.handleCancel}
                 onOk={this.handleOk}
                 onToggleWarp={this.handleToggleWarp}
+                onReturnTypeChange={this.handleReturnTypeChange}
+                isForJavascriptCall={this.props.isForJavascriptCall}
             />
         );
     }
@@ -166,8 +187,10 @@ CustomProcedures.propTypes = {
             startScale: PropTypes.number
         }),
         comments: PropTypes.bool,
-        collapse: PropTypes.bool
-    })
+        collapse: PropTypes.bool,
+    }),
+    hasAddLabelOption: PropTypes.bool,
+    hasWarpOption: PropTypes.bool
 };
 
 CustomProcedures.defaultOptions = {
@@ -178,16 +201,19 @@ CustomProcedures.defaultOptions = {
     },
     comments: false,
     collapse: false,
-    scrollbars: true
+    scrollbars: true,
 };
 
 CustomProcedures.defaultProps = {
-    options: CustomProcedures.defaultOptions
+    options: CustomProcedures.defaultOptions,
+    hasAddLabelOption: true,
+    hasWarpOption: true
 };
 
 const mapStateToProps = state => ({
     isRtl: state.locales.isRtl,
-    mutator: state.scratchGui.customProcedures.mutator
+    mutator: state.scratchGui.customProcedures.mutator,
+    isForJavascriptCall: state.scratchGui.customProcedures.isForJavascriptCall
 });
 
 export default connect(

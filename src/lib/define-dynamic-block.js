@@ -30,6 +30,10 @@ const defineDynamicBlock = (ScratchBlocks, categoryInfo, staticBlockInfo, extend
         if (staticBlockInfo.blockIconURI || categoryInfo.blockIconURI) {
             blockJson.extensions = ['scratch_extension'];
         }
+        if (staticBlockInfo.info && staticBlockInfo.info.dynamicArguments) {
+            // TODO DB: maybe create a custom extension
+            blockJson.extensions = [...(blockJson.extensions ? blockJson.extensions : []), "procedure_def_contextmenu"];
+        }
         // initialize the basics of the block, to be overridden & extended later by `domToMutation`
         this.jsonInit(blockJson);
         // initialize the cached block info used to carry block info from `domToMutation` to `mutationToDom`
@@ -97,7 +101,11 @@ const defineDynamicBlock = (ScratchBlocks, categoryInfo, staticBlockInfo, extend
             case ArgumentType.BOOLEAN:
                 args.push({type: 'input_value', name: argName, check: 'Boolean'});
                 break;
+            case ArgumentType.STRING_WITH_AUTOCOMPLETE:
+                args.push({type: 'input_value', name: argName});
+                break;
             }
+            
             return `%${++argCount}`;
         });
         this.interpolate_(scratchBlocksStyleText, args);

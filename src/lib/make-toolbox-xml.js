@@ -736,6 +736,76 @@ const myBlocks = function (isInitialSetup, isStage, targetId, colors) {
     </category>
     `;
 };
+
+// Javascript blocks
+// TODO DB 1: maybe change this in the future to be added via an extension mechanism
+// TODO DB 2: (V2) create a special type that will be a text autocomplete combobox (for types, for variables, for function depending on the selected variable, )
+// TODO DB 3: (V2) sa putem face DNG 1. din zona galbena a unui "set" in afara => si sa rezulte un block "get" si invers sa tragem un get in zona galbena a unui set => zona galbena din get este copiata in zona galbena a "set" + dispare blocul "get"
+// TODO DB 4: sa creez un block (argument) galben ("de tipul autocomplete for variable, ")
+const javascriptBlocks = function(colors) {
+    // TODO DB: where to put this message in order to be internationalized? I searched but I didn't found any messages file
+    // categoryName = formatMessage({
+    //     id: 'javascript.categoryName',
+    //     default: 'JavaScript',
+    //     description: 'JavaScript'
+    // });
+    const categoryName = "JavaScript";
+    return `
+    <category
+        name="${categoryName}"
+        id="javascript"
+        colour="${colors.primary}"
+        secondaryColour="${colors.tertiary}">
+        <block type="javascript_javascript">
+            <value name="JAVASCRIPT">
+                <shadow type="text">
+                    <field name="TEXT">console.log("javascript")</field>
+                </shadow>
+            </value>
+        </block>
+        <block type="javascript_set">
+            <value name="VAR">
+                <shadow type="javascript_textdropdown_with_autocomplete">
+                    <field name="TEXT">var</field>
+                </shadow>
+            </value>
+            <value name="VALUE">
+                <shadow type="text">
+                    <field name="TEXT">value</field>
+                </shadow>
+            </value>
+        </block>
+        <block type="javascript_get">
+            <value name="VAR">
+                <shadow type="javascript_textdropdown_with_autocomplete">
+                    <field name="VAR">var</field>
+                </shadow>
+            </value>
+        </block>
+        <block type="javascript_call">
+            <value name="VAR">
+                <shadow type="javascript_textdropdown_with_autocomplete">
+                    <field name="VAR">var</field>
+                </shadow>
+            </value>
+            <value name="FUNCTION">
+                <shadow type="javascript_textdropdown_with_autocomplete">
+                    <field name="FUNCT">function1</field>
+                </shadow>
+            </value>
+        </block>
+        <block type="javascript_new">
+            <value name="TYPE">
+                <shadow type="javascript_textdropdown_with_autocomplete">
+                    	<field name="TYPE">Type</field>
+                </shadow>
+            </value>
+        </block>
+    </category>
+    `;
+}
+
+
 /* eslint-enable no-unused-vars */
 
 const xmlOpen = '<xml style="display: none">';
@@ -787,6 +857,7 @@ const makeToolboxXML = function (isInitialSetup, isStage = true, targetId, categ
     const variablesXML = moveCategory('data') || variables(isInitialSetup, isStage, targetId, colors.data);
     const myBlocksXML = moveCategory('procedures') || myBlocks(isInitialSetup, isStage, targetId, colors.more);
 
+    const javascriptBlocksXML = javascriptBlocks(colors.more);
     const everything = [
         xmlOpen,
         motionXML, gap,
@@ -797,12 +868,15 @@ const makeToolboxXML = function (isInitialSetup, isStage = true, targetId, categ
         sensingXML, gap,
         operatorsXML, gap,
         variablesXML, gap,
-        myBlocksXML
+        myBlocksXML, gap,
+        javascriptBlocksXML
     ];
 
     for (const extensionCategory of categoriesXML) {
         everything.push(gap, extensionCategory.xml);
     }
+
+
 
     everything.push(xmlClose);
     return everything.join('\n');
